@@ -12,7 +12,6 @@ export declare class LicenseService {
     private clickFirstResult;
     private extractUuids;
     private buildApiHeaders;
-    private fetchLicenseList;
-    private fetchLicenseDetails;
+    private fetchLicenseCertificates;
 }
 export {};

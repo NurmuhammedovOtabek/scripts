@@ -114,26 +114,27 @@ export class LicenseService {
 
       const captured = await this.captureTokenFromBrowser(page, tin);
 
+      // The registry's open_source response already carries the FULL certificate
+      // objects, so if the browser captured them during navigation we're done.
       if (captured.certificates.length > 0) {
         console.log(
-          `[RESULT] Returning ${captured.certificates.length} certificate(s) from search response`,
+          `[RESULT] ${captured.certificates.length} certificate(s) from the browser response`,
         );
         return captured.certificates;
       }
 
-      let uuids = captured.uuids;
-      if (uuids.length === 0 && captured.token) {
-        console.log('[FETCH] No UUIDs from browser, trying API list...');
-        uuids = await this.fetchLicenseList(tin, captured.token);
+      // Otherwise re-query the list endpoint with the captured Turnstile token.
+      // It returns the full certificates too. NOTE: the old per-uuid detail
+      // endpoint (open_source/{uuid}) now returns 400 — the list already has
+      // everything, so we no longer call it.
+      if (captured.token) {
+        const certs = await this.fetchLicenseCertificates(tin, captured.token);
+        console.log(`[RESULT] ${certs.length} certificate(s) from the API list`);
+        return certs;
       }
 
-      if (uuids.length === 0) {
-        console.log('[RESULT] No licenses found for this TIN');
-        return [];
-      }
-
-      console.log(`[FETCH] Fetching details for ${uuids.length} license(s)...`);
-      return await this.fetchLicenseDetails(uuids, captured.token);
+      console.log('[RESULT] No Turnstile token obtained — cannot query licenses');
+      return [];
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new InternalServerErrorException(
@@ -485,10 +486,16 @@ export class LicenseService {
     };
   }
 
-  private async fetchLicenseList(
+  /**
+   * Fetch the full license/permit certificates for a TIN. The registry's
+   * open_source list endpoint returns the complete certificate objects in
+   * `data.certificates`, so this is the single source — the old per-uuid
+   * detail endpoint (open_source/{uuid}) was retired and now returns 400.
+   */
+  private async fetchLicenseCertificates(
     tin: string,
     token: string,
-  ): Promise<string[]> {
+  ): Promise<LicenseDetail[]> {
     const url =
       `${API_BASE}${OPEN_SOURCE_PATH}` +
       `?tin=${encodeURIComponent(tin)}&page=0&size=50`;
@@ -498,24 +505,7 @@ export class LicenseService {
       timeout: AXIOS_TIMEOUT_MS,
     });
 
-    return this.extractUuids(resp.data);
-  }
-
-  private async fetchLicenseDetails(
-    uuids: string[],
-    token: string,
-  ): Promise<LicenseDetail[]> {
-    const headers = this.buildApiHeaders(token);
-    const details: LicenseDetail[] = [];
-
-    for (const uuid of uuids) {
-      const resp = await axios.get(`${API_BASE}${OPEN_SOURCE_PATH}/${uuid}`, {
-        headers,
-        timeout: AXIOS_TIMEOUT_MS,
-      });
-      details.push(resp.data);
-    }
-
-    return details;
+    const certs = resp.data?.data?.certificates;
+    return Array.isArray(certs) ? certs : [];
   }
 }

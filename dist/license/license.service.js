@@ -114,20 +114,16 @@ let LicenseService = class LicenseService {
             const page = context.pages()[0] || (await context.newPage());
             const captured = await this.captureTokenFromBrowser(page, tin);
             if (captured.certificates.length > 0) {
-                console.log(`[RESULT] Returning ${captured.certificates.length} certificate(s) from search response`);
+                console.log(`[RESULT] ${captured.certificates.length} certificate(s) from the browser response`);
                 return captured.certificates;
             }
-            let uuids = captured.uuids;
-            if (uuids.length === 0 && captured.token) {
-                console.log('[FETCH] No UUIDs from browser, trying API list...');
-                uuids = await this.fetchLicenseList(tin, captured.token);
+            if (captured.token) {
+                const certs = await this.fetchLicenseCertificates(tin, captured.token);
+                console.log(`[RESULT] ${certs.length} certificate(s) from the API list`);
+                return certs;
             }
-            if (uuids.length === 0) {
-                console.log('[RESULT] No licenses found for this TIN');
-                return [];
-            }
-            console.log(`[FETCH] Fetching details for ${uuids.length} license(s)...`);
-            return await this.fetchLicenseDetails(uuids, captured.token);
+            console.log('[RESULT] No Turnstile token obtained — cannot query licenses');
+            return [];
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -435,26 +431,15 @@ let LicenseService = class LicenseService {
             'x-turnstile-token': token,
         };
     }
-    async fetchLicenseList(tin, token) {
+    async fetchLicenseCertificates(tin, token) {
         const url = `${API_BASE}${OPEN_SOURCE_PATH}` +
             `?tin=${encodeURIComponent(tin)}&page=0&size=50`;
         const resp = await axios_1.default.get(url, {
             headers: this.buildApiHeaders(token),
             timeout: AXIOS_TIMEOUT_MS,
         });
-        return this.extractUuids(resp.data);
-    }
-    async fetchLicenseDetails(uuids, token) {
-        const headers = this.buildApiHeaders(token);
-        const details = [];
-        for (const uuid of uuids) {
-            const resp = await axios_1.default.get(`${API_BASE}${OPEN_SOURCE_PATH}/${uuid}`, {
-                headers,
-                timeout: AXIOS_TIMEOUT_MS,
-            });
-            details.push(resp.data);
-        }
-        return details;
+        const certs = resp.data?.data?.certificates;
+        return Array.isArray(certs) ? certs : [];
     }
 };
 exports.LicenseService = LicenseService;
