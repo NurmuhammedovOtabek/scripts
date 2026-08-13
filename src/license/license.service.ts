@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import axios from 'axios';
 import { spawn, execSync, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
@@ -30,6 +34,13 @@ const DEFAULT_USER_AGENT =
 const CDP_PORT = 19222;
 const IS_WINDOWS = process.platform === 'win32';
 
+/**
+ * How long an idle Chrome is kept alive. Holding it costs ~400MB, so on a
+ * machine that also serves other work we hand the memory back once lookups
+ * stop, and pay the spawn cost again only on the next burst.
+ */
+const BROWSER_IDLE_MS = 10 * 60 * 1000;
+
 const CHROME_CANDIDATES = IS_WINDOWS
   ? [
       `${process.env['PROGRAMFILES']}\\Google\\Chrome\\Application\\chrome.exe`,
@@ -37,6 +48,8 @@ const CHROME_CANDIDATES = IS_WINDOWS
       `${process.env['LOCALAPPDATA']}\\Google\\Chrome\\Application\\chrome.exe`,
     ]
   : [
+      // macOS — the app bundle is the only place Chrome installs itself.
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable',
       '/usr/bin/chromium-browser',
@@ -57,8 +70,21 @@ interface CapturedTokenData {
 // ─── Service ────────────────────────────────────────────────────────────────
 
 @Injectable()
-export class LicenseService {
+export class LicenseService implements OnModuleDestroy {
   private licenseQueue: Promise<any> = Promise.resolve();
+
+  /**
+   * Chrome outlives a single lookup. Booting it was the dominant per-request
+   * cost (~5-10s), so only the page is per-request now; the browser is shared
+   * across calls and torn down after BROWSER_IDLE_MS of quiet.
+   */
+  private browser: Browser | null = null;
+  private chromeProc: ChildProcess | null = null;
+  private idleTimer: NodeJS.Timeout | null = null;
+
+  async onModuleDestroy(): Promise<void> {
+    await this.disposeBrowser();
+  }
 
   async getLicensesByTin(tin: string): Promise<LicenseDetail[]> {
     const result = this.licenseQueue.then(() => this._doGetLicenses(tin));
@@ -67,50 +93,15 @@ export class LicenseService {
   }
 
   private async _doGetLicenses(tin: string): Promise<LicenseDetail[]> {
-    let chromeProc: ChildProcess | null = null;
-    let browser: Browser | null = null;
+    let page: Page | null = null;
 
     try {
-      const chromePath = this.findChromePath();
-      if (!chromePath) {
-        throw new Error('Google Chrome not found. Install Chrome to proceed.');
-      }
-
-      const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
-
-      const chromeArgs = [
-        `--remote-debugging-port=${CDP_PORT}`,
-        `--user-data-dir=${userDataDir}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-popup-blocking',
-      ];
-
-      if (!IS_WINDOWS) {
-        chromeArgs.push(
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-        );
-      }
-
-      chromeArgs.push('about:blank');
-
-      chromeProc = spawn(chromePath, chromeArgs, {
-        detached: true,
-        stdio: 'ignore',
-      });
-      chromeProc.unref();
-      console.log(`[BROWSER] Chrome spawned (PID ${chromeProc.pid})`);
-
-      await this.waitForCdpReady();
-
-      browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
-      console.log('[CDP] Connected to Chrome');
-
+      const browser = await this.ensureBrowser();
       const context = browser.contexts()[0];
-      const page = context.pages()[0] || (await context.newPage());
+
+      // A fresh page per lookup: the response listener and any page state must
+      // not leak into the next TIN. The browser itself is deliberately reused.
+      page = await context.newPage();
 
       const captured = await this.captureTokenFromBrowser(page, tin);
 
@@ -136,13 +127,18 @@ export class LicenseService {
       console.log('[RESULT] No Turnstile token obtained — cannot query licenses');
       return [];
     } catch (err) {
+      // Only tear Chrome down when it actually died. A lookup that merely
+      // failed to get a token must not cost the next caller a fresh spawn.
+      if (this.browser && !this.browser.isConnected()) {
+        await this.disposeBrowser();
+      }
       const msg = err instanceof Error ? err.message : String(err);
       throw new InternalServerErrorException(
         `Failed to fetch licenses for TIN ${tin}: ${msg}`,
       );
     } finally {
-      if (browser) await browser.close().catch(() => {});
-      this.killChromeProcess(chromeProc);
+      if (page) await page.close().catch(() => {});
+      this.scheduleIdleShutdown();
     }
   }
 
@@ -171,6 +167,100 @@ export class LicenseService {
       }
     }
     throw new Error(`Chrome CDP endpoint not available after ${timeout}ms`);
+  }
+
+  /**
+   * Returns a connected browser, spawning Chrome only when there isn't one.
+   *
+   * A Chrome left listening by an earlier run of this process is reused rather
+   * than spawning a second instance against the same user-data-dir, which
+   * Chrome would refuse anyway.
+   */
+  private async ensureBrowser(): Promise<Browser> {
+    if (this.browser?.isConnected()) return this.browser;
+
+    // Stale handle from a Chrome that died between requests.
+    await this.disposeBrowser();
+
+    if (!(await this.isCdpUp())) {
+      const chromePath = this.findChromePath();
+      if (!chromePath) {
+        throw new Error('Google Chrome not found. Install Chrome to proceed.');
+      }
+
+      const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
+
+      const chromeArgs = [
+        `--remote-debugging-port=${CDP_PORT}`,
+        `--user-data-dir=${userDataDir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-popup-blocking',
+      ];
+
+      if (!IS_WINDOWS) {
+        chromeArgs.push(
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+        );
+      }
+
+      chromeArgs.push('about:blank');
+
+      this.chromeProc = spawn(chromePath, chromeArgs, {
+        detached: true,
+        stdio: 'ignore',
+      });
+      this.chromeProc.unref();
+      console.log(`[BROWSER] Chrome spawned (PID ${this.chromeProc.pid})`);
+
+      await this.waitForCdpReady();
+    } else {
+      console.log('[BROWSER] Reusing Chrome already listening on CDP');
+    }
+
+    this.browser = await chromium.connectOverCDP(
+      `http://localhost:${CDP_PORT}`,
+    );
+    console.log('[CDP] Connected to Chrome (kept alive between lookups)');
+    return this.browser;
+  }
+
+  private async isCdpUp(): Promise<boolean> {
+    try {
+      await axios.get(`http://localhost:${CDP_PORT}/json/version`, {
+        timeout: 1000,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async disposeBrowser(): Promise<void> {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+    this.killChromeProcess(this.chromeProc);
+    this.chromeProc = null;
+  }
+
+  /** Restarts the idle countdown after every lookup. */
+  private scheduleIdleShutdown(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      console.log('[BROWSER] Idle — closing Chrome to release memory');
+      void this.disposeBrowser();
+    }, BROWSER_IDLE_MS);
+    // Never hold the event loop open just for this timer.
+    this.idleTimer.unref?.();
   }
 
   private killChromeProcess(proc: ChildProcess | null): void {

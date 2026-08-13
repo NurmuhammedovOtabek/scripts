@@ -61,6 +61,7 @@ const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const CDP_PORT = 19222;
 const IS_WINDOWS = process.platform === 'win32';
+const BROWSER_IDLE_MS = 10 * 60 * 1000;
 const CHROME_CANDIDATES = IS_WINDOWS
     ? [
         `${process.env['PROGRAMFILES']}\\Google\\Chrome\\Application\\chrome.exe`,
@@ -68,6 +69,7 @@ const CHROME_CANDIDATES = IS_WINDOWS
         `${process.env['LOCALAPPDATA']}\\Google\\Chrome\\Application\\chrome.exe`,
     ]
     : [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium-browser',
@@ -76,42 +78,23 @@ const CHROME_CANDIDATES = IS_WINDOWS
     ];
 let LicenseService = class LicenseService {
     licenseQueue = Promise.resolve();
+    browser = null;
+    chromeProc = null;
+    idleTimer = null;
+    async onModuleDestroy() {
+        await this.disposeBrowser();
+    }
     async getLicensesByTin(tin) {
         const result = this.licenseQueue.then(() => this._doGetLicenses(tin));
         this.licenseQueue = result.catch(() => { });
         return result;
     }
     async _doGetLicenses(tin) {
-        let chromeProc = null;
-        let browser = null;
+        let page = null;
         try {
-            const chromePath = this.findChromePath();
-            if (!chromePath) {
-                throw new Error('Google Chrome not found. Install Chrome to proceed.');
-            }
-            const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
-            const chromeArgs = [
-                `--remote-debugging-port=${CDP_PORT}`,
-                `--user-data-dir=${userDataDir}`,
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--disable-popup-blocking',
-            ];
-            if (!IS_WINDOWS) {
-                chromeArgs.push('--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu');
-            }
-            chromeArgs.push('about:blank');
-            chromeProc = (0, child_process_1.spawn)(chromePath, chromeArgs, {
-                detached: true,
-                stdio: 'ignore',
-            });
-            chromeProc.unref();
-            console.log(`[BROWSER] Chrome spawned (PID ${chromeProc.pid})`);
-            await this.waitForCdpReady();
-            browser = await playwright_1.chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
-            console.log('[CDP] Connected to Chrome');
+            const browser = await this.ensureBrowser();
             const context = browser.contexts()[0];
-            const page = context.pages()[0] || (await context.newPage());
+            page = await context.newPage();
             const captured = await this.captureTokenFromBrowser(page, tin);
             if (captured.certificates.length > 0) {
                 console.log(`[RESULT] ${captured.certificates.length} certificate(s) from the browser response`);
@@ -126,13 +109,16 @@ let LicenseService = class LicenseService {
             return [];
         }
         catch (err) {
+            if (this.browser && !this.browser.isConnected()) {
+                await this.disposeBrowser();
+            }
             const msg = err instanceof Error ? err.message : String(err);
             throw new common_1.InternalServerErrorException(`Failed to fetch licenses for TIN ${tin}: ${msg}`);
         }
         finally {
-            if (browser)
-                await browser.close().catch(() => { });
-            this.killChromeProcess(chromeProc);
+            if (page)
+                await page.close().catch(() => { });
+            this.scheduleIdleShutdown();
         }
     }
     findChromePath() {
@@ -159,6 +145,74 @@ let LicenseService = class LicenseService {
             }
         }
         throw new Error(`Chrome CDP endpoint not available after ${timeout}ms`);
+    }
+    async ensureBrowser() {
+        if (this.browser?.isConnected())
+            return this.browser;
+        await this.disposeBrowser();
+        if (!(await this.isCdpUp())) {
+            const chromePath = this.findChromePath();
+            if (!chromePath) {
+                throw new Error('Google Chrome not found. Install Chrome to proceed.');
+            }
+            const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
+            const chromeArgs = [
+                `--remote-debugging-port=${CDP_PORT}`,
+                `--user-data-dir=${userDataDir}`,
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--disable-popup-blocking',
+            ];
+            if (!IS_WINDOWS) {
+                chromeArgs.push('--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu');
+            }
+            chromeArgs.push('about:blank');
+            this.chromeProc = (0, child_process_1.spawn)(chromePath, chromeArgs, {
+                detached: true,
+                stdio: 'ignore',
+            });
+            this.chromeProc.unref();
+            console.log(`[BROWSER] Chrome spawned (PID ${this.chromeProc.pid})`);
+            await this.waitForCdpReady();
+        }
+        else {
+            console.log('[BROWSER] Reusing Chrome already listening on CDP');
+        }
+        this.browser = await playwright_1.chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+        console.log('[CDP] Connected to Chrome (kept alive between lookups)');
+        return this.browser;
+    }
+    async isCdpUp() {
+        try {
+            await axios_1.default.get(`http://localhost:${CDP_PORT}/json/version`, {
+                timeout: 1000,
+            });
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    async disposeBrowser() {
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+        if (this.browser) {
+            await this.browser.close().catch(() => { });
+            this.browser = null;
+        }
+        this.killChromeProcess(this.chromeProc);
+        this.chromeProc = null;
+    }
+    scheduleIdleShutdown() {
+        if (this.idleTimer)
+            clearTimeout(this.idleTimer);
+        this.idleTimer = setTimeout(() => {
+            console.log('[BROWSER] Idle — closing Chrome to release memory');
+            void this.disposeBrowser();
+        }, BROWSER_IDLE_MS);
+        this.idleTimer.unref?.();
     }
     killChromeProcess(proc) {
         if (!proc?.pid)

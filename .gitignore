@@ -1,0 +1,12 @@
+node_modules/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Build metadata (dist itself is committed on purpose)
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
