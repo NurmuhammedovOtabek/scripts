@@ -19,4 +19,14 @@ export class AppController {
   getSud(@Query('tin') tin?: string, @Query('case') caseNumber?: string) {
     return this.appService.getCourtCases(tin, caseNumber);
   }
+
+  @Get('health')
+  getHealth() {
+    return this.appService.getHealth();
+  }
+
+  @Get('stats')
+  getStats() {
+    return this.appService.getLicenseStats();
+  }
 }

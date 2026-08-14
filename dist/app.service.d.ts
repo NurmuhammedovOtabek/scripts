@@ -13,4 +13,26 @@ export declare class AppService {
         caseNumber: string | undefined;
     }>;
     getLicensesByTin(tin: string): Promise<any[]>;
+    getLicenseStats(): import("./license/license.service").LicenseStats & {
+        queueBusy: boolean;
+        browserAlive: boolean;
+        avgMs: number | null;
+    };
+    getHealth(): {
+        status: string;
+        reason: string | null;
+        uptimeSec: number;
+        startedAt: string;
+        license: {
+            total: number;
+            ok: number;
+            failed: number;
+            failStreak: number;
+            avgMs: number | null;
+            browserAlive: boolean;
+            queueBusy: boolean;
+            lastOkAt: string | null;
+            lastError: string | null;
+        };
+    };
 }

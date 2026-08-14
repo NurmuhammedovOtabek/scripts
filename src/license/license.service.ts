@@ -1,6 +1,7 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import axios from 'axios';
@@ -67,6 +68,36 @@ interface CapturedTokenData {
   certificates: LicenseDetail[];
 }
 
+/**
+ * What the service has seen since boot. The registry publishes no rate limit,
+ * so the only way to learn one is to watch real traffic: a limit shows up as a
+ * run of 429/403 answers, or as the Turnstile challenge suddenly refusing to
+ * solve. Both are counted here rather than inferred from the logs after the
+ * fact.
+ */
+export interface LicenseStats {
+  startedAt: string;
+  total: number;
+  ok: number;
+  failed: number;
+  emptyResult: number;
+  turnstileSolved: number;
+  turnstileTimeout: number;
+  chromeSpawns: number;
+  /** HTTP status → how many times the registry API answered with it. */
+  apiStatus: Record<string, number>;
+  lastOkAt: string | null;
+  lastFailAt: string | null;
+  lastError: string | null;
+  /** Wall-clock ms of the most recent lookups, newest last. */
+  recentMs: number[];
+  /** Consecutive failures right now — a rising run is the rate-limit signal. */
+  failStreak: number;
+  worstFailStreak: number;
+}
+
+const RECENT_SAMPLE = 50;
+
 // ─── Service ────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -82,18 +113,70 @@ export class LicenseService implements OnModuleDestroy {
   private chromeProc: ChildProcess | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
 
+  private readonly logger = new Logger('License');
+
+  private readonly stats: LicenseStats = {
+    startedAt: new Date().toISOString(),
+    total: 0,
+    ok: 0,
+    failed: 0,
+    emptyResult: 0,
+    turnstileSolved: 0,
+    turnstileTimeout: 0,
+    chromeSpawns: 0,
+    apiStatus: {},
+    lastOkAt: null,
+    lastFailAt: null,
+    lastError: null,
+    recentMs: [],
+    failStreak: 0,
+    worstFailStreak: 0,
+  };
+
   async onModuleDestroy(): Promise<void> {
     await this.disposeBrowser();
   }
 
+  /** Snapshot for the /stats endpoint. */
+  getStats(): LicenseStats & {
+    queueBusy: boolean;
+    browserAlive: boolean;
+    avgMs: number | null;
+  } {
+    const r = this.stats.recentMs;
+    return {
+      ...this.stats,
+      apiStatus: { ...this.stats.apiStatus },
+      recentMs: [...r],
+      queueBusy: this.busy,
+      browserAlive: this.browser?.isConnected() ?? false,
+      avgMs: r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : null,
+    };
+  }
+
+  private busy = false;
+
   async getLicensesByTin(tin: string): Promise<LicenseDetail[]> {
-    const result = this.licenseQueue.then(() => this._doGetLicenses(tin));
+    const queuedAt = Date.now();
+    const result = this.licenseQueue.then(() => {
+      const waited = Date.now() - queuedAt;
+      if (waited > 1000) {
+        this.logger.log(`TIN=${tin} waited ${waited}ms in queue`);
+      }
+      return this._doGetLicenses(tin);
+    });
     this.licenseQueue = result.catch(() => {});
     return result;
   }
 
   private async _doGetLicenses(tin: string): Promise<LicenseDetail[]> {
     let page: Page | null = null;
+    const startedAt = Date.now();
+    const took = () => Date.now() - startedAt;
+
+    this.busy = true;
+    this.stats.total++;
+    this.logger.log(`▶ START TIN=${tin} (lookup #${this.stats.total})`);
 
     try {
       const browser = await this.ensureBrowser();
@@ -108,8 +191,9 @@ export class LicenseService implements OnModuleDestroy {
       // The registry's open_source response already carries the FULL certificate
       // objects, so if the browser captured them during navigation we're done.
       if (captured.certificates.length > 0) {
-        console.log(
-          `[RESULT] ${captured.certificates.length} certificate(s) from the browser response`,
+        this.recordOk(captured.certificates.length, took());
+        this.logger.log(
+          `✔ DONE TIN=${tin} — ${captured.certificates.length} cert(s) from browser response in ${took()}ms`,
         );
         return captured.certificates;
       }
@@ -120,23 +204,38 @@ export class LicenseService implements OnModuleDestroy {
       // everything, so we no longer call it.
       if (captured.token) {
         const certs = await this.fetchLicenseCertificates(tin, captured.token);
-        console.log(`[RESULT] ${certs.length} certificate(s) from the API list`);
+        this.recordOk(certs.length, took());
+        this.logger.log(
+          `✔ DONE TIN=${tin} — ${certs.length} cert(s) from API list in ${took()}ms`,
+        );
         return certs;
       }
 
-      console.log('[RESULT] No Turnstile token obtained — cannot query licenses');
+      // No token: almost always a Turnstile timeout. Counted separately from a
+      // crash because it is the shape throttling would take.
+      this.recordFail(tin, 'no Turnstile token', took());
+      this.logger.warn(
+        `✖ EMPTY TIN=${tin} — no Turnstile token after ${took()}ms (streak=${this.stats.failStreak})`,
+      );
       return [];
     } catch (err) {
       // Only tear Chrome down when it actually died. A lookup that merely
       // failed to get a token must not cost the next caller a fresh spawn.
-      if (this.browser && !this.browser.isConnected()) {
+      const alive = this.browser?.isConnected() ?? false;
+      if (this.browser && !alive) {
+        this.logger.error('Chrome died mid-lookup — disposing so the next call respawns');
         await this.disposeBrowser();
       }
       const msg = err instanceof Error ? err.message : String(err);
+      this.recordFail(tin, msg, took());
+      this.logger.error(
+        `✖ FAIL TIN=${tin} after ${took()}ms — ${msg} (streak=${this.stats.failStreak}, chromeAlive=${alive})`,
+      );
       throw new InternalServerErrorException(
         `Failed to fetch licenses for TIN ${tin}: ${msg}`,
       );
     } finally {
+      this.busy = false;
       if (page) await page.close().catch(() => {});
       this.scheduleIdleShutdown();
     }
@@ -167,6 +266,38 @@ export class LicenseService implements OnModuleDestroy {
       }
     }
     throw new Error(`Chrome CDP endpoint not available after ${timeout}ms`);
+  }
+
+  private pushDuration(ms: number): void {
+    this.stats.recentMs.push(ms);
+    if (this.stats.recentMs.length > RECENT_SAMPLE) this.stats.recentMs.shift();
+  }
+
+  private recordOk(certCount: number, ms: number): void {
+    this.stats.ok++;
+    if (certCount === 0) this.stats.emptyResult++;
+    this.stats.failStreak = 0;
+    this.stats.lastOkAt = new Date().toISOString();
+    this.pushDuration(ms);
+  }
+
+  private recordFail(tin: string, reason: string, ms: number): void {
+    this.stats.failed++;
+    this.stats.failStreak++;
+    if (this.stats.failStreak > this.stats.worstFailStreak) {
+      this.stats.worstFailStreak = this.stats.failStreak;
+    }
+    this.stats.lastFailAt = new Date().toISOString();
+    this.stats.lastError = `TIN=${tin}: ${reason}`;
+    this.pushDuration(ms);
+
+    // Three in a row is the earliest point where "bad luck" stops being the
+    // likely explanation and a block or an upstream change becomes one.
+    if (this.stats.failStreak >= 3) {
+      this.logger.error(
+        `⚠ ${this.stats.failStreak} FAILURES IN A ROW — possible rate limit or upstream change. Last: ${reason}`,
+      );
+    }
   }
 
   /**
@@ -214,17 +345,18 @@ export class LicenseService implements OnModuleDestroy {
         stdio: 'ignore',
       });
       this.chromeProc.unref();
-      console.log(`[BROWSER] Chrome spawned (PID ${this.chromeProc.pid})`);
+      this.stats.chromeSpawns++;
+      this.logger.log(`Chrome spawned (PID ${this.chromeProc.pid}) — spawn #${this.stats.chromeSpawns}`);
 
       await this.waitForCdpReady();
     } else {
-      console.log('[BROWSER] Reusing Chrome already listening on CDP');
+      this.logger.log('reusing Chrome already listening on CDP');
     }
 
     this.browser = await chromium.connectOverCDP(
       `http://localhost:${CDP_PORT}`,
     );
-    console.log('[CDP] Connected to Chrome (kept alive between lookups)');
+    this.logger.log('connected to Chrome (kept alive between lookups)');
     return this.browser;
   }
 
@@ -256,7 +388,7 @@ export class LicenseService implements OnModuleDestroy {
   private scheduleIdleShutdown(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      console.log('[BROWSER] Idle — closing Chrome to release memory');
+      this.logger.log('idle — closing Chrome to release memory');
       void this.disposeBrowser();
     }, BROWSER_IDLE_MS);
     // Never hold the event loop open just for this timer.
@@ -271,7 +403,7 @@ export class LicenseService implements OnModuleDestroy {
       } else {
         execSync(`kill -9 ${proc.pid}`, { stdio: 'ignore' });
       }
-      console.log(`[BROWSER] Chrome process ${proc.pid} killed`);
+      this.logger.log(`Chrome process ${proc.pid} killed`);
     } catch {}
   }
 
@@ -293,9 +425,21 @@ export class LicenseService implements OnModuleDestroy {
         const status = resp.status();
         const token = resp.request().headers()['x-turnstile-token'];
 
+        // Every registry answer is tallied by status. A block would surface
+        // here as 429/403 long before it shows up as a missing token.
+        const key = String(status);
+        this.stats.apiStatus[key] = (this.stats.apiStatus[key] ?? 0) + 1;
+        if (status === 429 || status === 403) {
+          this.logger.error(
+            `⚠ REGISTRY REFUSED: HTTP ${status} on ${url.split('?')[0]} — rate limit or block`,
+          );
+        } else if (status >= 400) {
+          this.logger.warn(`registry HTTP ${status} on ${url.split('?')[0]}`);
+        }
+
         if (token && !capturedToken) {
           capturedToken = token;
-          console.log('[LICENSE] Turnstile token captured');
+          this.logger.log('Turnstile token captured');
         }
 
         if (url.includes('open_source') && status === 200) {
@@ -304,7 +448,7 @@ export class LicenseService implements OnModuleDestroy {
             const certs = body?.data?.certificates;
             if (Array.isArray(certs) && certs.length > 0) {
               for (const c of certs) collectedCertificates.push(c);
-              console.log(`[LICENSE] Captured ${certs.length} certificate(s)`);
+              this.logger.log(`captured ${certs.length} certificate(s) from response`);
             }
             const uuids = this.extractUuids(body);
             for (const id of uuids) collectedUuids.add(id);
@@ -313,22 +457,38 @@ export class LicenseService implements OnModuleDestroy {
           }
         }
       } catch (err) {
-        console.log(`[RESP] Error: ${err}`);
+        this.logger.warn(`response handler error: ${err}`);
       }
     });
 
-    console.log(`[LICENSE] Navigating to registry for TIN=${tin}`);
+    this.logger.log(`navigating to registry for TIN=${tin}`);
+    const navAt = Date.now();
     await page.goto(
       `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}`,
       { waitUntil: 'domcontentloaded', timeout: 30_000 },
     );
 
     await page.waitForLoadState('networkidle').catch(() => {});
+    this.logger.log(`page ready in ${Date.now() - navAt}ms`);
 
+    const solveAt = Date.now();
     const turnstileToken = await this.extractTurnstileToken(page);
-    console.log(
-      `[LICENSE] Turnstile: ${turnstileToken ? 'solved' : 'timed out'}`,
-    );
+    const solveMs = Date.now() - solveAt;
+
+    if (turnstileToken) {
+      this.stats.turnstileSolved++;
+      this.logger.log(`Turnstile solved in ${solveMs}ms`);
+    } else {
+      this.stats.turnstileTimeout++;
+      // A rising share of these is the clearest early warning that the site
+      // has started treating this IP as a bot.
+      const share =
+        this.stats.turnstileTimeout /
+        Math.max(1, this.stats.turnstileSolved + this.stats.turnstileTimeout);
+      this.logger.warn(
+        `Turnstile TIMED OUT after ${solveMs}ms — timeout rate ${(share * 100).toFixed(0)}% (${this.stats.turnstileTimeout}/${this.stats.turnstileSolved + this.stats.turnstileTimeout})`,
+      );
+    }
 
     if (turnstileToken || capturedToken) {
       await page.waitForTimeout(5000);
@@ -370,7 +530,7 @@ export class LicenseService implements OnModuleDestroy {
         }
       }
     } catch (err) {
-      console.log(`[FALLBACK] Click failed: ${err}`);
+      this.logger.warn(`fallback click failed: ${err}`);
     }
 
     throw new Error(

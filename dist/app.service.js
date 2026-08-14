@@ -32,6 +32,30 @@ let AppService = class AppService {
     getLicensesByTin(tin) {
         return this.license.getLicensesByTin(tin);
     }
+    getLicenseStats() {
+        return this.license.getStats();
+    }
+    getHealth() {
+        const s = this.license.getStats();
+        const degraded = s.failStreak >= 3;
+        return {
+            status: degraded ? 'degraded' : 'ok',
+            reason: degraded ? `${s.failStreak} consecutive license failures` : null,
+            uptimeSec: Math.round(process.uptime()),
+            startedAt: s.startedAt,
+            license: {
+                total: s.total,
+                ok: s.ok,
+                failed: s.failed,
+                failStreak: s.failStreak,
+                avgMs: s.avgMs,
+                browserAlive: s.browserAlive,
+                queueBusy: s.queueBusy,
+                lastOkAt: s.lastOkAt,
+                lastError: s.lastError,
+            },
+        };
+    }
 };
 exports.AppService = AppService;
 exports.AppService = AppService = __decorate([
