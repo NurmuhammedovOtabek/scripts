@@ -211,13 +211,18 @@ export class LicenseService implements OnModuleDestroy {
         return certs;
       }
 
-      // No token: almost always a Turnstile timeout. Counted separately from a
-      // crash because it is the shape throttling would take.
-      this.recordFail(tin, 'no Turnstile token', took());
-      this.logger.warn(
-        `✖ EMPTY TIN=${tin} — no Turnstile token after ${took()}ms (streak=${this.stats.failStreak})`,
+      // No token means the Turnstile challenge never resolved, so the registry
+      // was never actually asked anything. Returning [] here would be
+      // indistinguishable from "this company holds no licences", and a caller
+      // that caches it would store a false negative it never retries — the
+      // lookup fails often enough (roughly one in three under test) for that to
+      // poison the data. Fail loudly so the caller can try again later.
+      //
+      // Thrown rather than recorded here: the catch below is the single place
+      // that counts a failure, so the stats stay consistent.
+      throw new Error(
+        'Turnstile token not obtained — the lookup never reached the registry',
       );
-      return [];
     } catch (err) {
       // Only tear Chrome down when it actually died. A lookup that merely
       // failed to get a token must not cost the next caller a fresh spawn.

@@ -150,9 +150,7 @@ let LicenseService = class LicenseService {
                 this.logger.log(`✔ DONE TIN=${tin} — ${certs.length} cert(s) from API list in ${took()}ms`);
                 return certs;
             }
-            this.recordFail(tin, 'no Turnstile token', took());
-            this.logger.warn(`✖ EMPTY TIN=${tin} — no Turnstile token after ${took()}ms (streak=${this.stats.failStreak})`);
-            return [];
+            throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
         catch (err) {
             const alive = this.browser?.isConnected() ?? false;
