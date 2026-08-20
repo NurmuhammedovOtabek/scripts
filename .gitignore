@@ -10,3 +10,6 @@ node_modules/
 
 # OS / editor
 .DS_Store
+
+# Python virtualenv for the captcha solver (created per machine)
+.venv/
