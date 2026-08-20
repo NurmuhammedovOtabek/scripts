@@ -31,11 +31,7 @@ export declare class GarovService {
     constructor(cacheManager: MemoryCacheService);
     getByInn(inn: string, filters?: GarovFilters): Promise<GarovRecord[]>;
     getByPinfl(pinfl: string): Promise<GarovRecord[]>;
-    refreshByInn(inn: string): Promise<{
-        inserted: number;
-        updated: number;
-        total: number;
-    }>;
+    refreshByInn(inn: string): Promise<GarovRecord[]>;
     verifyByCode(code: string): Promise<GarovRecord | null>;
     private fetchByInn;
     private fetchByPinfl;

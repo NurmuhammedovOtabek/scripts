@@ -115,7 +115,7 @@ let GarovService = GarovService_1 = class GarovService {
         }
         catch {
         }
-        return { ...result, total: liveRows.length };
+        return liveRows;
     }
     async verifyByCode(code) {
         const rows = await this.runQueued(() => this.fetchByCode(code));

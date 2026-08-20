@@ -151,13 +151,13 @@ export class GarovService {
   }
 
   /**
-   * Force a fresh pull from garov.uz for this INN. Inserts new rows and
-   * updates the `state` (active → resolved etc.) of existing ones.
-   * Returns the change summary so callers can log it.
+   * Force a fresh pull from garov.uz for this INN, bypassing the cache.
+   *
+   * On the backend this reported how many rows were inserted or updated. There
+   * is no database here to count against, so it returns the records themselves
+   * and the caller decides what changed.
    */
-  async refreshByInn(
-    inn: string,
-  ): Promise<{ inserted: number; updated: number; total: number }> {
+  async refreshByInn(inn: string): Promise<GarovRecord[]> {
     const liveRows = await this.runQueued(() => this.fetchByInn(inn));
     // Invalidate caches for this INN — both unfiltered and filtered
     try {
@@ -167,7 +167,7 @@ export class GarovService {
     } catch {
       /* ignore */
     }
-    return { ...result, total: liveRows.length };
+    return liveRows;
   }
 
   /**
