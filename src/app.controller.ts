@@ -29,4 +29,44 @@ export class AppController {
   getStats() {
     return this.appService.getLicenseStats();
   }
+
+  @Get('cadastre')
+  getCadastre(@Query('tin') tin: string) {
+    return this.appService.getCadastreByTin(tin);
+  }
+
+  @Get('cadastre/by-number')
+  getCadastreByNumber(@Query('cad') cad: string) {
+    return this.appService.getCadastreByNumber(cad);
+  }
+
+  @Get('tax-risk')
+  getTaxRisk(@Query('tin') tin?: string, @Query('pinfl') pinfl?: string) {
+    return this.appService.getTaxRisk(tin, pinfl);
+  }
+
+  @Get('tax-debt')
+  getTaxDebt(@Query('tin') tin?: string, @Query('pinfl') pinfl?: string) {
+    return this.appService.getTaxDebt(tin, pinfl);
+  }
+
+  @Get('garov')
+  getGarov(@Query('inn') inn?: string, @Query('pinfl') pinfl?: string) {
+    return this.appService.getGarov(inn, pinfl);
+  }
+
+  @Get('sert')
+  getSert(@Query('tin') tin: string) {
+    return this.appService.getCertificates(tin);
+  }
+
+  @Get('mib')
+  getMib(@Query('tin') tin?: string, @Query('pinfl') pinfl?: string) {
+    return this.appService.getMibDebts(tin, pinfl);
+  }
+
+  @Get('large-taxpayer')
+  getLargeTaxpayer(@Query('tin') tin: string) {
+    return this.appService.getLargeTaxpayer(tin);
+  }
 }

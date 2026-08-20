@@ -35,6 +35,30 @@ let AppController = class AppController {
     getStats() {
         return this.appService.getLicenseStats();
     }
+    getCadastre(tin) {
+        return this.appService.getCadastreByTin(tin);
+    }
+    getCadastreByNumber(cad) {
+        return this.appService.getCadastreByNumber(cad);
+    }
+    getTaxRisk(tin, pinfl) {
+        return this.appService.getTaxRisk(tin, pinfl);
+    }
+    getTaxDebt(tin, pinfl) {
+        return this.appService.getTaxDebt(tin, pinfl);
+    }
+    getGarov(inn, pinfl) {
+        return this.appService.getGarov(inn, pinfl);
+    }
+    getSert(tin) {
+        return this.appService.getCertificates(tin);
+    }
+    getMib(tin, pinfl) {
+        return this.appService.getMibDebts(tin, pinfl);
+    }
+    getLargeTaxpayer(tin) {
+        return this.appService.getLargeTaxpayer(tin);
+    }
 };
 exports.AppController = AppController;
 __decorate([
@@ -71,6 +95,66 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "getStats", null);
+__decorate([
+    (0, common_1.Get)('cadastre'),
+    __param(0, (0, common_1.Query)('tin')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getCadastre", null);
+__decorate([
+    (0, common_1.Get)('cadastre/by-number'),
+    __param(0, (0, common_1.Query)('cad')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getCadastreByNumber", null);
+__decorate([
+    (0, common_1.Get)('tax-risk'),
+    __param(0, (0, common_1.Query)('tin')),
+    __param(1, (0, common_1.Query)('pinfl')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getTaxRisk", null);
+__decorate([
+    (0, common_1.Get)('tax-debt'),
+    __param(0, (0, common_1.Query)('tin')),
+    __param(1, (0, common_1.Query)('pinfl')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getTaxDebt", null);
+__decorate([
+    (0, common_1.Get)('garov'),
+    __param(0, (0, common_1.Query)('inn')),
+    __param(1, (0, common_1.Query)('pinfl')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getGarov", null);
+__decorate([
+    (0, common_1.Get)('sert'),
+    __param(0, (0, common_1.Query)('tin')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getSert", null);
+__decorate([
+    (0, common_1.Get)('mib'),
+    __param(0, (0, common_1.Query)('tin')),
+    __param(1, (0, common_1.Query)('pinfl')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getMib", null);
+__decorate([
+    (0, common_1.Get)('large-taxpayer'),
+    __param(0, (0, common_1.Query)('tin')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getLargeTaxpayer", null);
 exports.AppController = AppController = __decorate([
     (0, common_1.Controller)(),
     __metadata("design:paramtypes", [app_service_1.AppService])

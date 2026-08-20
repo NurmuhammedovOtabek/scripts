@@ -31,4 +31,12 @@ export declare class AppController {
         browserAlive: boolean;
         avgMs: number | null;
     };
+    getCadastre(tin: string): Promise<any>;
+    getCadastreByNumber(cad: string): Promise<any>;
+    getTaxRisk(tin?: string, pinfl?: string): Promise<import("./tax-risk/tax-risk.service").TaxRiskResult>;
+    getTaxDebt(tin?: string, pinfl?: string): Promise<import("./tax-debtor/tax-debtor.service").TaxDebtorResult>;
+    getGarov(inn?: string, pinfl?: string): Promise<import("./garov/garov.service").GarovRecord[]>;
+    getSert(tin: string): Promise<import("./sert/sert.service").CertificateFields[]>;
+    getMib(tin?: string, pinfl?: string): Promise<import("./mib/mib-debt.parser").MibDebtResultDto>;
+    getLargeTaxpayer(tin: string): Promise<import("./large-taxpayer/large-taxpayer.service").LargeTaxpayerResult>;
 }

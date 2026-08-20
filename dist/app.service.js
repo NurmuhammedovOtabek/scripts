@@ -14,14 +14,35 @@ const common_1 = require("@nestjs/common");
 const stat_registry_service_1 = require("./stat-registry/stat-registry.service");
 const court_cases_service_1 = require("./court-cases/court-cases.service");
 const license_service_1 = require("./license/license.service");
+const davreestr_service_1 = require("./davreestr/davreestr.service");
+const tax_risk_service_1 = require("./tax-risk/tax-risk.service");
+const tax_debtor_service_1 = require("./tax-debtor/tax-debtor.service");
+const garov_service_1 = require("./garov/garov.service");
+const sert_service_1 = require("./sert/sert.service");
+const mib_service_1 = require("./mib/mib.service");
+const large_taxpayer_service_1 = require("./large-taxpayer/large-taxpayer.service");
 let AppService = class AppService {
     statRegistry;
     courtCases;
     license;
-    constructor(statRegistry, courtCases, license) {
+    davreestr;
+    taxRisk;
+    taxDebtor;
+    garov;
+    sert;
+    mib;
+    largeTaxpayer;
+    constructor(statRegistry, courtCases, license, davreestr, taxRisk, taxDebtor, garov, sert, mib, largeTaxpayer) {
         this.statRegistry = statRegistry;
         this.courtCases = courtCases;
         this.license = license;
+        this.davreestr = davreestr;
+        this.taxRisk = taxRisk;
+        this.taxDebtor = taxDebtor;
+        this.garov = garov;
+        this.sert = sert;
+        this.mib = mib;
+        this.largeTaxpayer = largeTaxpayer;
     }
     getFromStatus(inn) {
         return this.statRegistry.getFromStatus(inn);
@@ -56,12 +77,49 @@ let AppService = class AppService {
             },
         };
     }
+    getCadastreByTin(tin) {
+        return this.davreestr.searchByTin(tin);
+    }
+    getCadastreByNumber(cadNumber) {
+        return this.davreestr.searchByCadNumber(cadNumber);
+    }
+    getTaxRisk(tin, pinfl) {
+        return pinfl
+            ? this.taxRisk.checkByPinfl(pinfl)
+            : this.taxRisk.checkByInn(tin);
+    }
+    getTaxDebt(tin, pinfl) {
+        return pinfl
+            ? this.taxDebtor.checkByPinfl(pinfl)
+            : this.taxDebtor.checkByInn(tin);
+    }
+    getGarov(inn, pinfl) {
+        return pinfl ? this.garov.getByPinfl(pinfl) : this.garov.getByInn(inn);
+    }
+    getCertificates(tin) {
+        return this.sert.getByInn(tin);
+    }
+    getMibDebts(tin, pinfl) {
+        return pinfl
+            ? this.mib.checkDebtByPinfl(pinfl)
+            : this.mib.checkDebtByInn(tin);
+    }
+    getLargeTaxpayer(tin) {
+        return this.largeTaxpayer.checkByInn(tin);
+    }
 };
 exports.AppService = AppService;
 exports.AppService = AppService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [stat_registry_service_1.StatRegistryService,
         court_cases_service_1.CourtCasesService,
-        license_service_1.LicenseService])
+        license_service_1.LicenseService,
+        davreestr_service_1.DavreestrService,
+        tax_risk_service_1.TaxRiskService,
+        tax_debtor_service_1.TaxDebtorService,
+        garov_service_1.GarovService,
+        sert_service_1.SertScriptService,
+        mib_service_1.MibScriptService,
+        large_taxpayer_service_1.LargeTaxpayerService])
 ], AppService);
 //# sourceMappingURL=app.service.js.map

@@ -96,3 +96,46 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Scrapers hosted here
+
+These sources rate-limit or geo-restrict by IP, or sit behind a captcha, so they
+run from this machine rather than the production server — spending this box's
+address instead of production's. Nothing here writes to a database: each
+endpoint returns what it scraped and the backend decides what to persist.
+
+| Endpoint | Source | Key |
+|---|---|---|
+| `GET /main?inn=` | registr.stat.uz | INN |
+| `GET /sud?tin=&case=` | sud.uz | STIR |
+| `GET /litsens?tin=` | license.gov.uz | STIR |
+| `GET /cadastre?tin=` | davreestr.uz | STIR |
+| `GET /cadastre/by-number?cad=` | davreestr.uz | cadastre no. |
+| `GET /tax-risk?tin=` or `?pinfl=` | old.soliq.uz | STIR or PINFL |
+| `GET /tax-debt?tin=` or `?pinfl=` | old.soliq.uz | STIR or PINFL |
+| `GET /garov?inn=` or `?pinfl=` | garov.uz | INN or PINFL |
+| `GET /sert?tin=` | sert2.standart.uz | STIR |
+| `GET /mib?tin=` or `?pinfl=` | mib.uz | STIR or PINFL |
+| `GET /large-taxpayer?tin=` | old.soliq.uz | STIR |
+| `GET /health` | — | liveness + degraded state |
+| `GET /stats` | — | license scraper counters |
+
+An individual's collateral, tax-risk and enforcement records are indexed by
+**PINFL**, not by their business STIR — passing the wrong one returns nothing
+rather than an error, so the caller must choose deliberately.
+
+### Deliberately NOT moved here
+
+- **mysoliq** (`branch`, `nds`) — the proxy whitelists production's IP; served
+  from here it would simply be refused.
+- **cbu-sync** — token-authenticated and database-heavy, with no IP limit to escape.
+- **chamber, itpark, uzex, xt-xarid, egov** — open APIs with no rate limit worth
+  spending a second address on.
+
+### Requirements
+
+Chrome (for the license scraper) and Python with `ddddocr` (for the soliq
+captchas):
+
+    brew install --cask google-chrome
+    pip3 install -r python/requirements.txt

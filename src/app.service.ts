@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
 import { LicenseService } from './license/license.service';
+import { DavreestrService } from './davreestr/davreestr.service';
+import { TaxRiskService } from './tax-risk/tax-risk.service';
+import { TaxDebtorService } from './tax-debtor/tax-debtor.service';
+import { GarovService } from './garov/garov.service';
+import { SertScriptService } from './sert/sert.service';
+import { MibScriptService } from './mib/mib.service';
+import { LargeTaxpayerService } from './large-taxpayer/large-taxpayer.service';
 
 @Injectable()
 export class AppService {
@@ -9,6 +16,13 @@ export class AppService {
     private readonly statRegistry: StatRegistryService,
     private readonly courtCases: CourtCasesService,
     private readonly license: LicenseService,
+    private readonly davreestr: DavreestrService,
+    private readonly taxRisk: TaxRiskService,
+    private readonly taxDebtor: TaxDebtorService,
+    private readonly garov: GarovService,
+    private readonly sert: SertScriptService,
+    private readonly mib: MibScriptService,
+    private readonly largeTaxpayer: LargeTaxpayerService,
   ) {}
 
   getFromStatus(inn: string) {
@@ -57,5 +71,57 @@ export class AppService {
         lastError: s.lastError,
       },
     };
+  }
+
+  // ─── Scrapers moved off the production server ──────────────────────────
+  //
+  // These sources rate-limit or geo-restrict by IP, or sit behind a captcha.
+  // Running them here spends this machine's address instead of production's,
+  // and none of them touch a database — the backend persists what it wants.
+
+  /** Cadastre by company TIN. Hard-limited to ~15 req/min by davreestr.uz. */
+  getCadastreByTin(tin: string) {
+    return this.davreestr.searchByTin(tin);
+  }
+
+  /** Cadastre by cadastre number. */
+  getCadastreByNumber(cadNumber: string) {
+    return this.davreestr.searchByCadNumber(cadNumber);
+  }
+
+  /** Tax-risk register. Accepts a PINFL, which is how an individual is listed. */
+  getTaxRisk(tin?: string, pinfl?: string) {
+    return pinfl
+      ? this.taxRisk.checkByPinfl(pinfl)
+      : this.taxRisk.checkByInn(tin as string);
+  }
+
+  /** Tax-debtor register. Same PINFL/TIN split as tax-risk. */
+  getTaxDebt(tin?: string, pinfl?: string) {
+    return pinfl
+      ? this.taxDebtor.checkByPinfl(pinfl)
+      : this.taxDebtor.checkByInn(tin as string);
+  }
+
+  /** Collateral register. An individual's pledges are found by PINFL, not TIN. */
+  getGarov(inn?: string, pinfl?: string) {
+    return pinfl ? this.garov.getByPinfl(pinfl) : this.garov.getByInn(inn as string);
+  }
+
+  /** Conformity certificates from sert2.standart.uz. */
+  getCertificates(tin: string) {
+    return this.sert.getByInn(tin);
+  }
+
+  /** Enforcement debts from mib.uz — captcha-gated and Uzbekistan-only. */
+  getMibDebts(tin?: string, pinfl?: string) {
+    return pinfl
+      ? this.mib.checkDebtByPinfl(pinfl)
+      : this.mib.checkDebtByInn(tin as string);
+  }
+
+  /** Large-taxpayer register membership. */
+  getLargeTaxpayer(tin: string) {
+    return this.largeTaxpayer.checkByInn(tin);
   }
 }

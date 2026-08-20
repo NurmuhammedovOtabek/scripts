@@ -15,6 +15,14 @@ const stat_registry_module_1 = require("./stat-registry/stat-registry.module");
 const court_cases_module_1 = require("./court-cases/court-cases.module");
 const license_module_1 = require("./license/license.module");
 const text_catptcha_module_1 = require("./text_catptcha/text_catptcha.module");
+const common_module_1 = require("./common/common.module");
+const davreestr_module_1 = require("./davreestr/davreestr.module");
+const tax_risk_module_1 = require("./tax-risk/tax-risk.module");
+const tax_debtor_module_1 = require("./tax-debtor/tax-debtor.module");
+const garov_module_1 = require("./garov/garov.module");
+const sert_module_1 = require("./sert/sert.module");
+const mib_module_1 = require("./mib/mib.module");
+const large_taxpayer_module_1 = require("./large-taxpayer/large-taxpayer.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -26,6 +34,14 @@ exports.AppModule = AppModule = __decorate([
             court_cases_module_1.CourtCasesModule,
             license_module_1.LicenseModule,
             text_catptcha_module_1.CaptchaModule,
+            common_module_1.CommonModule,
+            davreestr_module_1.DavreestrModule,
+            tax_risk_module_1.TaxRiskModule,
+            tax_debtor_module_1.TaxDebtorModule,
+            garov_module_1.GarovModule,
+            sert_module_1.SertModule,
+            mib_module_1.MibModule,
+            large_taxpayer_module_1.LargeTaxpayerModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],
