@@ -43,6 +43,7 @@ export declare class LicenseService implements OnModuleDestroy {
     private disposeBrowser;
     private scheduleIdleShutdown;
     private killChromeProcess;
+    private fetchPage;
     private captureTokenFromBrowser;
     private extractTurnstileToken;
     private isTokenBearingResponse;

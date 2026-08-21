@@ -14,6 +14,7 @@ import {
   type Browser,
   type Page,
   type Response as PwResponse,
+  type BrowserContext,
 } from 'playwright';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -26,11 +27,20 @@ const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
 const AXIOS_TIMEOUT_MS = 15_000;
 
-/** Page size for the certificate list. The site's own view uses 10. */
-const LICENSE_PAGE_SIZE = 50;
+/**
+ * Page size for the certificate list.
+ *
+ * Exactly what the site's own view requests. Asking for more is rejected with
+ * a 400 — the API caps this and does not say so anywhere, which is why the
+ * previous size of 50 failed every time it was reached.
+ */
+const LICENSE_PAGE_SIZE = 10;
 
-/** Stops a malformed response from paging forever. 50 x 50 = 2500. */
-const MAX_LICENSE_PAGES = 50;
+/** Stops a malformed response paging forever. 200 x 10 = 2000 certificates. */
+const MAX_LICENSE_PAGES = 200;
+
+/** How long one extra page may take to answer. */
+const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
 const UUID_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
@@ -72,6 +82,8 @@ interface CapturedTokenData {
   token: string;
   uuids: string[];
   certificates: LicenseDetail[];
+  /** What the registry says the full count is, when it says. */
+  total: number | null;
 }
 
 /**
@@ -192,32 +204,44 @@ export class LicenseService implements OnModuleDestroy {
       // not leak into the next TIN. The browser itself is deliberately reused.
       page = await context.newPage();
 
-      const captured = await this.captureTokenFromBrowser(page, tin);
+      const first = await this.captureTokenFromBrowser(page, tin, 1);
+      const all: LicenseDetail[] = [...first.certificates];
 
-      // The token is worth more than what the browser happened to load. The
-      // site paginates its own view at 10 records, so returning the captured
-      // response would silently truncate any company holding more than that —
-      // two unrelated companies both came back with exactly 10, which is how
-      // this was found. With a token we re-query the API and page through it.
-      if (captured.token) {
-        const certs = await this.fetchLicenseCertificates(tin, captured.token);
-        this.recordOk(certs.length, took());
-        this.logger.log(
-          `✔ DONE TIN=${tin} — ${certs.length} cert(s) from API list in ${took()}ms`,
-        );
-        return certs;
+      // The site shows 10 per page. Anything beyond that has to be walked, and
+      // it has to be walked through the browser: the Turnstile token is
+      // single-use, so replaying it against the API returns 400. Each
+      // navigation earns a fresh one.
+      if (
+        first.certificates.length === LICENSE_PAGE_SIZE ||
+        (first.total !== null && first.total > all.length)
+      ) {
+        const context = page.context();
+        for (let pageNo = 2; pageNo <= MAX_LICENSE_PAGES; pageNo++) {
+          if (first.total !== null && all.length >= first.total) break;
+
+          const next = await this.fetchPage(context, tin, pageNo);
+          if (next.length === 0) break;
+
+          all.push(...next);
+          if (next.length < LICENSE_PAGE_SIZE) break;
+        }
       }
 
-      // No token, but the browser did see a response. Better than nothing,
-      // though it may be only the first page — say so rather than let a short
-      // list pass as complete.
-      if (captured.certificates.length > 0) {
-        this.recordOk(captured.certificates.length, took());
-        this.logger.warn(
-          `⚠ TIN=${tin} — no token; returning ${captured.certificates.length} cert(s) ` +
-            `from the browser response, which may be page 1 only`,
+      if (all.length > 0) {
+        // A short list that claims to be complete is the failure worth
+        // catching, so say when the two disagree.
+        if (first.total !== null && all.length < first.total) {
+          this.logger.warn(
+            `⚠ TIN=${tin} — collected ${all.length} of ${first.total} the registry reports`,
+          );
+        }
+        this.recordOk(all.length, took());
+        this.logger.log(
+          `✔ DONE TIN=${tin} — ${all.length} cert(s)` +
+            (first.total !== null ? ` of ${first.total}` : '') +
+            ` in ${took()}ms`,
         );
-        return captured.certificates;
+        return all;
       }
 
       // No token and no response means the Turnstile challenge never resolved,
@@ -421,15 +445,66 @@ export class LicenseService implements OnModuleDestroy {
     } catch {}
   }
 
+  /**
+   * One further page of certificates.
+   *
+   * Deliberately not reusing the first page's tab. Attaching another response
+   * listener to it each time stacks them up, and every listener re-collects
+   * every response — by page twelve the same records had been counted a dozen
+   * times. A tab per page keeps exactly one listener alive.
+   *
+   * It also waits for the registry's own answer rather than for the network to
+   * fall idle. Idle took ~30s a page; the response arrives in a fraction of
+   * that, and it is the only thing being waited on.
+   */
+  private async fetchPage(
+    context: BrowserContext,
+    tin: string,
+    pageNo: number,
+  ): Promise<LicenseDetail[]> {
+    const tab = await context.newPage();
+    const certs: LicenseDetail[] = [];
+
+    try {
+      const answered = tab
+        .waitForResponse(
+          (r) => r.url().includes('open_source?tin=') && r.status() === 200,
+          { timeout: PAGE_RESPONSE_TIMEOUT_MS },
+        )
+        .catch(() => null);
+
+      await tab.goto(
+        `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`,
+        { waitUntil: 'domcontentloaded', timeout: 30_000 },
+      );
+
+      const resp = await answered;
+      if (!resp) {
+        this.logger.warn(`TIN=${tin} page ${pageNo} — no registry response`);
+        return certs;
+      }
+
+      const body = await resp.json().catch(() => null);
+      const list = body?.data?.certificates;
+      if (Array.isArray(list)) certs.push(...list);
+      this.logger.log(`TIN=${tin} page ${pageNo} — ${certs.length} cert(s)`);
+      return certs;
+    } finally {
+      await tab.close().catch(() => {});
+    }
+  }
+
   // ─── Token capture ────────────────────────────────────────────────────
 
   private async captureTokenFromBrowser(
     page: Page,
     tin: string,
+    pageNo = 1,
   ): Promise<CapturedTokenData> {
     const collectedUuids = new Set<string>();
     const collectedCertificates: LicenseDetail[] = [];
     let capturedToken: string | null = null;
+    let reportedTotal: number | null = null;
 
     page.on('response', async (resp) => {
       try {
@@ -456,14 +531,29 @@ export class LicenseService implements OnModuleDestroy {
           this.logger.log('Turnstile token captured');
         }
 
+        // The exact query the site itself sends is the only reliable spec for
+        // this API: it is undocumented and rejects guessed parameters with 400.
+        if (url.includes('open_source')) {
+          this.logger.debug(`registry request: ${url}`);
+        }
+
         if (url.includes('open_source') && status === 200) {
           const body = await resp.json().catch(() => null);
           if (body) {
             const certs = body?.data?.certificates;
             if (Array.isArray(certs) && certs.length > 0) {
               for (const c of certs) collectedCertificates.push(c);
-              this.logger.log(`captured ${certs.length} certificate(s) from response`);
+              this.logger.log(
+                `captured ${certs.length} certificate(s) from response`,
+              );
             }
+            // How many the registry says exist in total, so the caller knows
+            // whether this page is the whole answer.
+            const t =
+              body?.data?.total_items ??
+              body?.data?.total ??
+              body?.data?.totalCount;
+            if (typeof t === 'number') reportedTotal = t;
             const uuids = this.extractUuids(body);
             for (const id of uuids) collectedUuids.add(id);
             if (body?.uuid) collectedUuids.add(String(body.uuid));
@@ -475,10 +565,14 @@ export class LicenseService implements OnModuleDestroy {
       }
     });
 
-    this.logger.log(`navigating to registry for TIN=${tin}`);
+    // The site's own page number is 1-based; the API it calls underneath is
+    // 0-based. Driving it through the UI means each page arrives with its own
+    // Turnstile token, which is what makes paging possible at all — the token
+    // is single-use, so replaying it against the API returns 400.
+    this.logger.log(`navigating to registry for TIN=${tin} (page ${pageNo})`);
     const navAt = Date.now();
     await page.goto(
-      `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}`,
+      `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`,
       { waitUntil: 'domcontentloaded', timeout: 30_000 },
     );
 
@@ -514,11 +608,17 @@ export class LicenseService implements OnModuleDestroy {
         token,
         uuids: [...collectedUuids],
         certificates: collectedCertificates,
+        total: reportedTotal,
       };
     }
 
     if (token) {
-      return { token, uuids: [], certificates: collectedCertificates };
+      return {
+        token,
+        uuids: [],
+        certificates: collectedCertificates,
+        total: reportedTotal,
+      };
     }
 
     try {
@@ -540,6 +640,7 @@ export class LicenseService implements OnModuleDestroy {
             token: tkn,
             uuids: [...collectedUuids],
             certificates: collectedCertificates,
+            total: reportedTotal,
           };
         }
       }

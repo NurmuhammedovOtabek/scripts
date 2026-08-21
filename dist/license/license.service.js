@@ -56,8 +56,9 @@ const OPEN_SOURCE_PATH = '/v1/register/open_source';
 const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
 const AXIOS_TIMEOUT_MS = 15_000;
-const LICENSE_PAGE_SIZE = 50;
-const MAX_LICENSE_PAGES = 50;
+const LICENSE_PAGE_SIZE = 10;
+const MAX_LICENSE_PAGES = 200;
+const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -140,18 +141,31 @@ let LicenseService = class LicenseService {
             const browser = await this.ensureBrowser();
             const context = browser.contexts()[0];
             page = await context.newPage();
-            const captured = await this.captureTokenFromBrowser(page, tin);
-            if (captured.token) {
-                const certs = await this.fetchLicenseCertificates(tin, captured.token);
-                this.recordOk(certs.length, took());
-                this.logger.log(`✔ DONE TIN=${tin} — ${certs.length} cert(s) from API list in ${took()}ms`);
-                return certs;
+            const first = await this.captureTokenFromBrowser(page, tin, 1);
+            const all = [...first.certificates];
+            if (first.certificates.length === LICENSE_PAGE_SIZE ||
+                (first.total !== null && first.total > all.length)) {
+                const context = page.context();
+                for (let pageNo = 2; pageNo <= MAX_LICENSE_PAGES; pageNo++) {
+                    if (first.total !== null && all.length >= first.total)
+                        break;
+                    const next = await this.fetchPage(context, tin, pageNo);
+                    if (next.length === 0)
+                        break;
+                    all.push(...next);
+                    if (next.length < LICENSE_PAGE_SIZE)
+                        break;
+                }
             }
-            if (captured.certificates.length > 0) {
-                this.recordOk(captured.certificates.length, took());
-                this.logger.warn(`⚠ TIN=${tin} — no token; returning ${captured.certificates.length} cert(s) ` +
-                    `from the browser response, which may be page 1 only`);
-                return captured.certificates;
+            if (all.length > 0) {
+                if (first.total !== null && all.length < first.total) {
+                    this.logger.warn(`⚠ TIN=${tin} — collected ${all.length} of ${first.total} the registry reports`);
+                }
+                this.recordOk(all.length, took());
+                this.logger.log(`✔ DONE TIN=${tin} — ${all.length} cert(s)` +
+                    (first.total !== null ? ` of ${first.total}` : '') +
+                    ` in ${took()}ms`);
+                return all;
             }
             throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
@@ -307,10 +321,35 @@ let LicenseService = class LicenseService {
         }
         catch { }
     }
-    async captureTokenFromBrowser(page, tin) {
+    async fetchPage(context, tin, pageNo) {
+        const tab = await context.newPage();
+        const certs = [];
+        try {
+            const answered = tab
+                .waitForResponse((r) => r.url().includes('open_source?tin=') && r.status() === 200, { timeout: PAGE_RESPONSE_TIMEOUT_MS })
+                .catch(() => null);
+            await tab.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            const resp = await answered;
+            if (!resp) {
+                this.logger.warn(`TIN=${tin} page ${pageNo} — no registry response`);
+                return certs;
+            }
+            const body = await resp.json().catch(() => null);
+            const list = body?.data?.certificates;
+            if (Array.isArray(list))
+                certs.push(...list);
+            this.logger.log(`TIN=${tin} page ${pageNo} — ${certs.length} cert(s)`);
+            return certs;
+        }
+        finally {
+            await tab.close().catch(() => { });
+        }
+    }
+    async captureTokenFromBrowser(page, tin, pageNo = 1) {
         const collectedUuids = new Set();
         const collectedCertificates = [];
         let capturedToken = null;
+        let reportedTotal = null;
         page.on('response', async (resp) => {
             try {
                 const url = resp.url();
@@ -330,6 +369,9 @@ let LicenseService = class LicenseService {
                     capturedToken = token;
                     this.logger.log('Turnstile token captured');
                 }
+                if (url.includes('open_source')) {
+                    this.logger.debug(`registry request: ${url}`);
+                }
                 if (url.includes('open_source') && status === 200) {
                     const body = await resp.json().catch(() => null);
                     if (body) {
@@ -339,6 +381,11 @@ let LicenseService = class LicenseService {
                                 collectedCertificates.push(c);
                             this.logger.log(`captured ${certs.length} certificate(s) from response`);
                         }
+                        const t = body?.data?.total_items ??
+                            body?.data?.total ??
+                            body?.data?.totalCount;
+                        if (typeof t === 'number')
+                            reportedTotal = t;
                         const uuids = this.extractUuids(body);
                         for (const id of uuids)
                             collectedUuids.add(id);
@@ -353,9 +400,9 @@ let LicenseService = class LicenseService {
                 this.logger.warn(`response handler error: ${err}`);
             }
         });
-        this.logger.log(`navigating to registry for TIN=${tin}`);
+        this.logger.log(`navigating to registry for TIN=${tin} (page ${pageNo})`);
         const navAt = Date.now();
-        await page.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
         await page.waitForLoadState('networkidle').catch(() => { });
         this.logger.log(`page ready in ${Date.now() - navAt}ms`);
         const solveAt = Date.now();
@@ -380,10 +427,16 @@ let LicenseService = class LicenseService {
                 token,
                 uuids: [...collectedUuids],
                 certificates: collectedCertificates,
+                total: reportedTotal,
             };
         }
         if (token) {
-            return { token, uuids: [], certificates: collectedCertificates };
+            return {
+                token,
+                uuids: [],
+                certificates: collectedCertificates,
+                total: reportedTotal,
+            };
         }
         try {
             const detailPromise = page
@@ -404,6 +457,7 @@ let LicenseService = class LicenseService {
                         token: tkn,
                         uuids: [...collectedUuids],
                         certificates: collectedCertificates,
+                        total: reportedTotal,
                     };
                 }
             }
