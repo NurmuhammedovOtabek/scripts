@@ -56,6 +56,8 @@ const OPEN_SOURCE_PATH = '/v1/register/open_source';
 const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
 const AXIOS_TIMEOUT_MS = 15_000;
+const LICENSE_PAGE_SIZE = 50;
+const MAX_LICENSE_PAGES = 50;
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -139,16 +141,17 @@ let LicenseService = class LicenseService {
             const context = browser.contexts()[0];
             page = await context.newPage();
             const captured = await this.captureTokenFromBrowser(page, tin);
-            if (captured.certificates.length > 0) {
-                this.recordOk(captured.certificates.length, took());
-                this.logger.log(`✔ DONE TIN=${tin} — ${captured.certificates.length} cert(s) from browser response in ${took()}ms`);
-                return captured.certificates;
-            }
             if (captured.token) {
                 const certs = await this.fetchLicenseCertificates(tin, captured.token);
                 this.recordOk(certs.length, took());
                 this.logger.log(`✔ DONE TIN=${tin} — ${certs.length} cert(s) from API list in ${took()}ms`);
                 return certs;
+            }
+            if (captured.certificates.length > 0) {
+                this.recordOk(captured.certificates.length, took());
+                this.logger.warn(`⚠ TIN=${tin} — no token; returning ${captured.certificates.length} cert(s) ` +
+                    `from the browser response, which may be page 1 only`);
+                return captured.certificates;
             }
             throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
@@ -583,14 +586,36 @@ let LicenseService = class LicenseService {
         };
     }
     async fetchLicenseCertificates(tin, token) {
-        const url = `${API_BASE}${OPEN_SOURCE_PATH}` +
-            `?tin=${encodeURIComponent(tin)}&page=0&size=50`;
-        const resp = await axios_1.default.get(url, {
-            headers: this.buildApiHeaders(token),
-            timeout: AXIOS_TIMEOUT_MS,
-        });
-        const certs = resp.data?.data?.certificates;
-        return Array.isArray(certs) ? certs : [];
+        const all = [];
+        let reportedTotal = null;
+        for (let page = 0; page < MAX_LICENSE_PAGES; page++) {
+            const url = `${API_BASE}${OPEN_SOURCE_PATH}` +
+                `?tin=${encodeURIComponent(tin)}&page=${page}&size=${LICENSE_PAGE_SIZE}`;
+            const resp = await axios_1.default.get(url, {
+                headers: this.buildApiHeaders(token),
+                timeout: AXIOS_TIMEOUT_MS,
+            });
+            const body = resp.data?.data;
+            const certs = body?.certificates;
+            if (!Array.isArray(certs) || certs.length === 0)
+                break;
+            all.push(...certs);
+            const total = body?.total_items ?? body?.total ?? body?.totalCount;
+            if (typeof total === 'number')
+                reportedTotal = total;
+            if (certs.length < LICENSE_PAGE_SIZE)
+                break;
+            if (reportedTotal !== null && all.length >= reportedTotal)
+                break;
+        }
+        if (all.length === MAX_LICENSE_PAGES * LICENSE_PAGE_SIZE) {
+            this.logger.warn(`TIN=${tin} — hit the ${MAX_LICENSE_PAGES}-page cap at ${all.length} certificates; ` +
+                `the list may be incomplete`);
+        }
+        else if (reportedTotal !== null && all.length < reportedTotal) {
+            this.logger.warn(`TIN=${tin} — collected ${all.length} of ${reportedTotal} certificates the registry reports`);
+        }
+        return all;
     }
 };
 exports.LicenseService = LicenseService;

@@ -25,6 +25,12 @@ const OPEN_SOURCE_PATH = '/v1/register/open_source';
 const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
 const AXIOS_TIMEOUT_MS = 15_000;
+
+/** Page size for the certificate list. The site's own view uses 10. */
+const LICENSE_PAGE_SIZE = 50;
+
+/** Stops a malformed response from paging forever. 50 x 50 = 2500. */
+const MAX_LICENSE_PAGES = 50;
 const UUID_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
@@ -188,20 +194,11 @@ export class LicenseService implements OnModuleDestroy {
 
       const captured = await this.captureTokenFromBrowser(page, tin);
 
-      // The registry's open_source response already carries the FULL certificate
-      // objects, so if the browser captured them during navigation we're done.
-      if (captured.certificates.length > 0) {
-        this.recordOk(captured.certificates.length, took());
-        this.logger.log(
-          `✔ DONE TIN=${tin} — ${captured.certificates.length} cert(s) from browser response in ${took()}ms`,
-        );
-        return captured.certificates;
-      }
-
-      // Otherwise re-query the list endpoint with the captured Turnstile token.
-      // It returns the full certificates too. NOTE: the old per-uuid detail
-      // endpoint (open_source/{uuid}) now returns 400 — the list already has
-      // everything, so we no longer call it.
+      // The token is worth more than what the browser happened to load. The
+      // site paginates its own view at 10 records, so returning the captured
+      // response would silently truncate any company holding more than that —
+      // two unrelated companies both came back with exactly 10, which is how
+      // this was found. With a token we re-query the API and page through it.
       if (captured.token) {
         const certs = await this.fetchLicenseCertificates(tin, captured.token);
         this.recordOk(certs.length, took());
@@ -211,8 +208,20 @@ export class LicenseService implements OnModuleDestroy {
         return certs;
       }
 
-      // No token means the Turnstile challenge never resolved, so the registry
-      // was never actually asked anything. Returning [] here would be
+      // No token, but the browser did see a response. Better than nothing,
+      // though it may be only the first page — say so rather than let a short
+      // list pass as complete.
+      if (captured.certificates.length > 0) {
+        this.recordOk(captured.certificates.length, took());
+        this.logger.warn(
+          `⚠ TIN=${tin} — no token; returning ${captured.certificates.length} cert(s) ` +
+            `from the browser response, which may be page 1 only`,
+        );
+        return captured.certificates;
+      }
+
+      // No token and no response means the Turnstile challenge never resolved,
+      // so the registry was never actually asked anything. Returning [] here would be
       // indistinguishable from "this company holds no licences", and a caller
       // that caches it would store a false negative it never retries — the
       // lookup fails often enough (roughly one in three under test) for that to
@@ -747,20 +756,58 @@ export class LicenseService implements OnModuleDestroy {
    * `data.certificates`, so this is the single source — the old per-uuid
    * detail endpoint (open_source/{uuid}) was retired and now returns 400.
    */
+  /**
+   * Every certificate for a company, paging until the registry runs out.
+   *
+   * A single page was not enough: the count is unbounded in practice, and a
+   * caller storing a truncated list has no way to tell it is short. The loop
+   * stops on an empty page, on the reported total being reached, or at
+   * MAX_PAGES — and if that cap is what stopped it, the log says so instead of
+   * letting a partial answer look complete.
+   */
   private async fetchLicenseCertificates(
     tin: string,
     token: string,
   ): Promise<LicenseDetail[]> {
-    const url =
-      `${API_BASE}${OPEN_SOURCE_PATH}` +
-      `?tin=${encodeURIComponent(tin)}&page=0&size=50`;
+    const all: LicenseDetail[] = [];
+    let reportedTotal: number | null = null;
 
-    const resp = await axios.get(url, {
-      headers: this.buildApiHeaders(token),
-      timeout: AXIOS_TIMEOUT_MS,
-    });
+    for (let page = 0; page < MAX_LICENSE_PAGES; page++) {
+      const url =
+        `${API_BASE}${OPEN_SOURCE_PATH}` +
+        `?tin=${encodeURIComponent(tin)}&page=${page}&size=${LICENSE_PAGE_SIZE}`;
 
-    const certs = resp.data?.data?.certificates;
-    return Array.isArray(certs) ? certs : [];
+      const resp = await axios.get(url, {
+        headers: this.buildApiHeaders(token),
+        timeout: AXIOS_TIMEOUT_MS,
+      });
+
+      const body = resp.data?.data;
+      const certs = body?.certificates;
+      if (!Array.isArray(certs) || certs.length === 0) break;
+
+      all.push(...certs);
+
+      // The registry names this inconsistently across endpoints, so take
+      // whichever it sends and treat a missing total as "keep going".
+      const total = body?.total_items ?? body?.total ?? body?.totalCount;
+      if (typeof total === 'number') reportedTotal = total;
+
+      if (certs.length < LICENSE_PAGE_SIZE) break;
+      if (reportedTotal !== null && all.length >= reportedTotal) break;
+    }
+
+    if (all.length === MAX_LICENSE_PAGES * LICENSE_PAGE_SIZE) {
+      this.logger.warn(
+        `TIN=${tin} — hit the ${MAX_LICENSE_PAGES}-page cap at ${all.length} certificates; ` +
+          `the list may be incomplete`,
+      );
+    } else if (reportedTotal !== null && all.length < reportedTotal) {
+      this.logger.warn(
+        `TIN=${tin} — collected ${all.length} of ${reportedTotal} certificates the registry reports`,
+      );
+    }
+
+    return all;
   }
 }
