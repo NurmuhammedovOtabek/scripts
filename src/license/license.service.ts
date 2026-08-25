@@ -337,6 +337,25 @@ export class LicenseService implements OnModuleDestroy {
         await this.disposeBrowser();
       }
       const msg = err instanceof Error ? err.message : String(err);
+
+      // A challenge failure says something about the far side; every other
+      // kind says something about us, and only the first is worth backing off
+      // for. Counted separately for that reason.
+      if (/Turnstile/i.test(msg)) {
+        this.turnstileStreak++;
+        if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
+          this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
+          this.logger.error(
+            `Registry has refused the challenge ${this.turnstileStreak}x in a row — ` +
+              `pausing lookups for ${Math.round(TURNSTILE_COOLDOWN_MS / 1000)}s ` +
+              `(until ${new Date(this.blockedUntil).toISOString()}). ` +
+              `Asking again sooner tends to extend the refusal.`,
+          );
+        }
+      } else {
+        this.turnstileStreak = 0;
+      }
+
       this.recordFail(tin, msg, took());
       this.logger.error(
         `✖ FAIL TIN=${tin} after ${took()}ms — ${msg} (streak=${this.stats.failStreak}, chromeAlive=${alive})`,

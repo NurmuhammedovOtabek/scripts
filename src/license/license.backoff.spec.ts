@@ -73,6 +73,72 @@ describe('LicenseService — challenge backoff', () => {
   });
 });
 
+describe('LicenseService — entering the backoff', () => {
+  /**
+   * Drives the real failure path rather than setting `blockedUntil` by hand.
+   *
+   * The tests above did set it by hand, and passed while the code that was
+   * supposed to set it had never made it into the file at all — the box then
+   * failed a challenge twenty times in a row without ever pausing. A guard is
+   * only worth as much as the thing that arms it.
+   */
+  const failing = (message: string) => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockRejectedValue(new Error(message));
+    return svc;
+  };
+
+  it('arms the backoff after three refusals in a row', async () => {
+    const svc = failing('Turnstile token not obtained');
+
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.blockedUntil).toBeGreaterThan(Date.now());
+    expect(svc.turnstileStreak).toBe(3);
+  });
+
+  it('does not arm it before the third', async () => {
+    const svc = failing('Turnstile token not obtained');
+
+    await svc.getLicensesByTin('300000001').catch(() => undefined);
+    await svc.getLicensesByTin('300000002').catch(() => undefined);
+
+    // Two is bad luck; a browser respawn every time one lookup goes wrong
+    // would cost more than it saves.
+    expect(svc.blockedUntil).toBe(0);
+  });
+
+  it('refuses the next caller once armed, instead of asking again', async () => {
+    const svc = failing('Turnstile token not obtained');
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+    const attemptsBefore = svc.ensureBrowser.mock.calls.length;
+
+    const err = await svc.getLicensesByTin('300000009').catch((e: any) => e);
+
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    // The whole point: no further challenge is spent while the far side is
+    // refusing.
+    expect(svc.ensureBrowser.mock.calls.length).toBe(attemptsBefore);
+    expect(svc.getStats().turnstileBlocked).toBe(1);
+  });
+
+  it('ignores failures that are not the challenge', async () => {
+    // Chrome dying says nothing about whether the registry will talk to us.
+    const svc = failing('Chrome died mid-lookup');
+
+    for (let i = 0; i < 5; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.blockedUntil).toBe(0);
+    expect(svc.turnstileStreak).toBe(0);
+  });
+});
+
 describe('log redaction', () => {
   it('masks a PINFL but leaves a company TIN readable', () => {
     // mib logs both through the same `INN=` line, so only length tells them

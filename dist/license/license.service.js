@@ -195,6 +195,19 @@ let LicenseService = class LicenseService {
                 await this.disposeBrowser();
             }
             const msg = err instanceof Error ? err.message : String(err);
+            if (/Turnstile/i.test(msg)) {
+                this.turnstileStreak++;
+                if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
+                    this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
+                    this.logger.error(`Registry has refused the challenge ${this.turnstileStreak}x in a row — ` +
+                        `pausing lookups for ${Math.round(TURNSTILE_COOLDOWN_MS / 1000)}s ` +
+                        `(until ${new Date(this.blockedUntil).toISOString()}). ` +
+                        `Asking again sooner tends to extend the refusal.`);
+                }
+            }
+            else {
+                this.turnstileStreak = 0;
+            }
             this.recordFail(tin, msg, took());
             this.logger.error(`✖ FAIL TIN=${tin} after ${took()}ms — ${msg} (streak=${this.stats.failStreak}, chromeAlive=${alive})`);
             throw new common_1.InternalServerErrorException(`Failed to fetch licenses for TIN ${tin}: ${msg}`);
