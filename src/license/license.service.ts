@@ -317,6 +317,24 @@ export class LicenseService implements OnModuleDestroy {
         return all;
       }
 
+      // The registry answered and said zero.
+      //
+      // That is an answer about the company, not a failure of ours, and the
+      // two were indistinguishable here until today: every company holding no
+      // permits was reported as "Turnstile token not obtained", retried twice,
+      // alerted to Telegram, and never recorded — so it was fetched again on
+      // every single page view, for ever. Most of the failures on 25 Aug were
+      // this, not a rate limit.
+      if (first.token && first.total === 0) {
+        this.turnstileStreak = 0;
+        this.blockedUntil = 0;
+        this.recordOk(0, took());
+        this.logger.log(
+          `✔ DONE TIN=${tin} — the registry holds none, in ${took()}ms`,
+        );
+        return [];
+      }
+
       // No token and no response means the Turnstile challenge never resolved,
       // so the registry was never actually asked anything. Returning [] here would be
       // indistinguishable from "this company holds no licences", and a caller
@@ -664,7 +682,12 @@ export class LicenseService implements OnModuleDestroy {
             }
             // How many the registry says exist in total, so the caller knows
             // whether this page is the whole answer.
+            // `totalItems` is what the registry actually sends. The three
+            // snake_case guesses below it never matched, so this stayed null
+            // on every lookup — which left the completeness check dead and
+            // the empty-versus-refused question unanswerable.
             const t =
+              body?.data?.totalItems ??
               body?.data?.total_items ??
               body?.data?.total ??
               body?.data?.totalCount;

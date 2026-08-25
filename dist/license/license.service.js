@@ -186,6 +186,13 @@ let LicenseService = class LicenseService {
                     ` in ${took()}ms`);
                 return all;
             }
+            if (first.token && first.total === 0) {
+                this.turnstileStreak = 0;
+                this.blockedUntil = 0;
+                this.recordOk(0, took());
+                this.logger.log(`✔ DONE TIN=${tin} — the registry holds none, in ${took()}ms`);
+                return [];
+            }
             throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
         catch (err) {
@@ -418,7 +425,8 @@ let LicenseService = class LicenseService {
                                 collectedCertificates.push(c);
                             this.logger.log(`captured ${certs.length} certificate(s) from response`);
                         }
-                        const t = body?.data?.total_items ??
+                        const t = body?.data?.totalItems ??
+                            body?.data?.total_items ??
                             body?.data?.total ??
                             body?.data?.totalCount;
                         if (typeof t === 'number')

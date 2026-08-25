@@ -274,3 +274,71 @@ describe('LicenseService — the real refusal path', () => {
     expect(svc.blockedUntil).toBe(0);
   });
 });
+
+describe('LicenseService — a company with no permits', () => {
+  /**
+   * The registry answers 200 with `{certificates: [], totalItems: 0}`.
+   *
+   * Until today that was thrown as "Turnstile token not obtained", so every
+   * company holding nothing was retried twice, alerted to Telegram, and never
+   * recorded — refetched on every page view for ever. Most of the failures on
+   * 25 Aug were this, not a rate limit.
+   */
+  const holdingNone = () => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockResolvedValue({
+      contexts: () => [
+        { newPage: async () => ({ close: async () => {}, context: () => ({}) }) },
+      ],
+      isConnected: () => true,
+    });
+    svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
+      token: 'a-real-token',
+      uuids: [],
+      certificates: [],
+      total: 0,
+    });
+    return svc;
+  };
+
+  it('answers with an empty list rather than throwing', async () => {
+    const svc = holdingNone();
+
+    await expect(svc.getLicensesByTin('302245864')).resolves.toEqual([]);
+  });
+
+  it('does not count towards the refusal backoff', async () => {
+    // Three such companies in a row used to look identical to three refusals,
+    // which would now pause the whole queue for ten minutes over nothing.
+    const svc = holdingNone();
+
+    for (let i = 0; i < 4; i++) {
+      await svc.getLicensesByTin(`30000000${i}`);
+    }
+
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.blockedUntil).toBe(0);
+  });
+
+  it('records it as a success, counted as an empty result', async () => {
+    const svc = holdingNone();
+
+    await svc.getLicensesByTin('302245864');
+    const s = svc.getStats();
+
+    expect(s.ok).toBe(1);
+    expect(s.failed).toBe(0);
+    expect(s.emptyResult).toBe(1);
+  });
+
+  it('still throws when the challenge never produced a token', async () => {
+    // The distinction the whole fix rests on: no token means we never asked.
+    const svc = holdingNone();
+    svc.captureTokenFromBrowser = jest
+      .fn()
+      .mockResolvedValue({ token: '', uuids: [], certificates: [], total: null });
+
+    await expect(svc.getLicensesByTin('300438878')).rejects.toThrow();
+    expect(svc.turnstileStreak).toBe(1);
+  });
+});
