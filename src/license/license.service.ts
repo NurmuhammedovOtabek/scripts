@@ -300,6 +300,14 @@ export class LicenseService implements OnModuleDestroy {
             `⚠ TIN=${tin} — collected ${all.length} of ${first.total} the registry reports`,
           );
         }
+        // Records came back, so the challenge let us through and whatever was
+        // refusing us has passed. This belongs here and nowhere else: it sat
+        // one line above the Turnstile throw for a while, which meant every
+        // refusal cleared the count of refusals and the backoff could never
+        // reach three.
+        this.turnstileStreak = 0;
+        this.blockedUntil = 0;
+
         this.recordOk(all.length, took());
         this.logger.log(
           `✔ DONE TIN=${tin} — ${all.length} cert(s)` +
@@ -308,11 +316,6 @@ export class LicenseService implements OnModuleDestroy {
         );
         return all;
       }
-
-      // Anything that got this far reached the registry, so whatever made it
-      // refuse us has passed.
-      this.turnstileStreak = 0;
-      this.blockedUntil = 0;
 
       // No token and no response means the Turnstile challenge never resolved,
       // so the registry was never actually asked anything. Returning [] here would be

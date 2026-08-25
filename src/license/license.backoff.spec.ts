@@ -207,3 +207,70 @@ describe('LicenseService — idle shutdown', () => {
     expect(svc.disposeBrowser).toHaveBeenCalled();
   });
 });
+
+describe('LicenseService — the real refusal path', () => {
+  /**
+   * Drives the path production actually takes: the browser works, the page
+   * loads, and the challenge yields no token.
+   *
+   * The earlier tests stubbed `ensureBrowser` into rejecting, so execution
+   * never reached the body of the try — and the reset that broke the backoff
+   * lived exactly there. Both suites passed while the box failed twenty times
+   * in a row without ever pausing. A stub placed above the bug proves nothing
+   * about the bug.
+   */
+  const refusing = () => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockResolvedValue({
+      contexts: () => [{ newPage: async () => ({ close: async () => {}, context: () => ({}) }) }],
+      isConnected: () => true,
+    });
+    // No certificates and no token — the shape of a refused challenge.
+    svc.captureTokenFromBrowser = jest
+      .fn()
+      .mockResolvedValue({ token: '', uuids: [], certificates: [], total: null });
+    return svc;
+  };
+
+  it('arms the backoff after three refusals that reached the browser', async () => {
+    const svc = refusing();
+
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.turnstileStreak).toBe(3);
+    expect(svc.blockedUntil).toBeGreaterThan(Date.now());
+  });
+
+  it('refuses the fourth caller without opening a browser', async () => {
+    const svc = refusing();
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+    const opened = svc.ensureBrowser.mock.calls.length;
+
+    const err = await svc.getLicensesByTin('300000009').catch((e: any) => e);
+
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(svc.ensureBrowser.mock.calls.length).toBe(opened);
+  });
+
+  it('a success clears the count, so an isolated refusal never accumulates', async () => {
+    const svc = refusing();
+    await svc.getLicensesByTin('300000001').catch(() => undefined);
+    await svc.getLicensesByTin('300000002').catch(() => undefined);
+    expect(svc.turnstileStreak).toBe(2);
+
+    svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
+      token: 't',
+      uuids: [],
+      certificates: [{ id: 1 }],
+      total: 1,
+    });
+    await svc.getLicensesByTin('300000003');
+
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.blockedUntil).toBe(0);
+  });
+});

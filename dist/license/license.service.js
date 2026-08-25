@@ -178,14 +178,14 @@ let LicenseService = class LicenseService {
                 if (first.total !== null && all.length < first.total) {
                     this.logger.warn(`⚠ TIN=${tin} — collected ${all.length} of ${first.total} the registry reports`);
                 }
+                this.turnstileStreak = 0;
+                this.blockedUntil = 0;
                 this.recordOk(all.length, took());
                 this.logger.log(`✔ DONE TIN=${tin} — ${all.length} cert(s)` +
                     (first.total !== null ? ` of ${first.total}` : '') +
                     ` in ${took()}ms`);
                 return all;
             }
-            this.turnstileStreak = 0;
-            this.blockedUntil = 0;
             throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
         catch (err) {
