@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const logs_controller_1 = require("./logs/logs.controller");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const stat_registry_module_1 = require("./stat-registry/stat-registry.module");
@@ -43,7 +44,7 @@ exports.AppModule = AppModule = __decorate([
             mib_module_1.MibModule,
             large_taxpayer_module_1.LargeTaxpayerModule,
         ],
-        controllers: [app_controller_1.AppController],
+        controllers: [app_controller_1.AppController, logs_controller_1.LogsController],
         providers: [app_service_1.AppService],
     })
 ], AppModule);

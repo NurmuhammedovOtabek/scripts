@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { LogsController } from './logs/logs.controller';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { StatRegistryModule } from './stat-registry/stat-registry.module';
@@ -31,7 +32,7 @@ import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
     MibModule,
     LargeTaxpayerModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, LogsController],
   providers: [AppService],
 })
 export class AppModule {}

@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import axios from 'axios';
@@ -41,6 +42,30 @@ const MAX_LICENSE_PAGES = 200;
 
 /** How long one extra page may take to answer. */
 const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
+
+/**
+ * How many challenge failures in a row before we stop asking.
+ *
+ * Three: one is ordinary, two is bad luck, three in a row has not once been
+ * anything but the far side turning us away.
+ */
+const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(
+  process.env.TURNSTILE_STREAK ?? '3',
+  10,
+);
+
+/**
+ * How long to leave it alone once it starts refusing.
+ *
+ * Ten minutes. The one refusal we have measured lasted about forty-five, so
+ * this does not clear it — it stops us spending forty seconds and a fresh
+ * challenge every few minutes for the duration, which is what appears to keep
+ * the refusal alive.
+ */
+const TURNSTILE_COOLDOWN_MS = parseInt(
+  process.env.TURNSTILE_COOLDOWN_MS ?? String(10 * 60 * 1000),
+  10,
+);
 const UUID_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
@@ -112,6 +137,13 @@ export interface LicenseStats {
   /** Consecutive failures right now — a rising run is the rate-limit signal. */
   failStreak: number;
   worstFailStreak: number;
+  /**
+   * Lookups refused locally during a backoff, without asking the registry.
+   *
+   * Rising while `failed` holds steady is the backoff working: callers are
+   * being turned away cheaply instead of each spending a challenge.
+   */
+  turnstileBlocked: number;
 }
 
 const RECENT_SAMPLE = 50;
@@ -121,6 +153,16 @@ const RECENT_SAMPLE = 50;
 @Injectable()
 export class LicenseService implements OnModuleDestroy {
   private licenseQueue: Promise<any> = Promise.resolve();
+
+  /**
+   * Epoch ms until which lookups are refused without asking the registry.
+   *
+   * Set after a run of challenge failures, cleared by the first success.
+   */
+  private blockedUntil = 0;
+
+  /** Consecutive failures that were the challenge specifically, not the box. */
+  private turnstileStreak = 0;
 
   /**
    * Chrome outlives a single lookup. Booting it was the dominant per-request
@@ -149,6 +191,7 @@ export class LicenseService implements OnModuleDestroy {
     recentMs: [],
     failStreak: 0,
     worstFailStreak: 0,
+    turnstileBlocked: 0,
   };
 
   async onModuleDestroy(): Promise<void> {
@@ -168,7 +211,9 @@ export class LicenseService implements OnModuleDestroy {
       recentMs: [...r],
       queueBusy: this.busy,
       browserAlive: this.browser?.isConnected() ?? false,
-      avgMs: r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : null,
+      avgMs: r.length
+        ? Math.round(r.reduce((a, b) => a + b, 0) / r.length)
+        : null,
     };
   }
 
@@ -191,6 +236,26 @@ export class LicenseService implements OnModuleDestroy {
     let page: Page | null = null;
     const startedAt = Date.now();
     const took = () => Date.now() - startedAt;
+
+    // The registry has been refusing us; do not go and ask again yet.
+    //
+    // Answering here rather than driving the browser is the whole point: each
+    // attempt during a refusal costs forty seconds and, more importantly,
+    // spends another challenge against an address the far side has already
+    // decided to distrust. On 25 Aug it refused for forty-five minutes while
+    // we kept knocking every few minutes; retrying less is the only lever we
+    // have over how long that lasts.
+    const waitMs = this.blockedUntil - Date.now();
+    if (waitMs > 0) {
+      this.stats.turnstileBlocked++;
+      throw new ServiceUnavailableException({
+        message:
+          `Registry challenge is refusing this address — ` +
+          `not retrying for another ${Math.ceil(waitMs / 1000)}s`,
+        retryAfterSec: Math.ceil(waitMs / 1000),
+        blockedUntil: new Date(this.blockedUntil).toISOString(),
+      });
+    }
 
     this.busy = true;
     this.stats.total++;
@@ -244,6 +309,11 @@ export class LicenseService implements OnModuleDestroy {
         return all;
       }
 
+      // Anything that got this far reached the registry, so whatever made it
+      // refuse us has passed.
+      this.turnstileStreak = 0;
+      this.blockedUntil = 0;
+
       // No token and no response means the Turnstile challenge never resolved,
       // so the registry was never actually asked anything. Returning [] here would be
       // indistinguishable from "this company holds no licences", and a caller
@@ -261,7 +331,9 @@ export class LicenseService implements OnModuleDestroy {
       // failed to get a token must not cost the next caller a fresh spawn.
       const alive = this.browser?.isConnected() ?? false;
       if (this.browser && !alive) {
-        this.logger.error('Chrome died mid-lookup — disposing so the next call respawns');
+        this.logger.error(
+          'Chrome died mid-lookup — disposing so the next call respawns',
+        );
         await this.disposeBrowser();
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -384,7 +456,9 @@ export class LicenseService implements OnModuleDestroy {
       });
       this.chromeProc.unref();
       this.stats.chromeSpawns++;
-      this.logger.log(`Chrome spawned (PID ${this.chromeProc.pid}) — spawn #${this.stats.chromeSpawns}`);
+      this.logger.log(
+        `Chrome spawned (PID ${this.chromeProc.pid}) — spawn #${this.stats.chromeSpawns}`,
+      );
 
       await this.waitForCdpReady();
     } else {

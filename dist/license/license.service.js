@@ -59,6 +59,8 @@ const AXIOS_TIMEOUT_MS = 15_000;
 const LICENSE_PAGE_SIZE = 10;
 const MAX_LICENSE_PAGES = 200;
 const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
+const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(process.env.TURNSTILE_STREAK ?? '3', 10);
+const TURNSTILE_COOLDOWN_MS = parseInt(process.env.TURNSTILE_COOLDOWN_MS ?? String(10 * 60 * 1000), 10);
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -82,6 +84,8 @@ const CHROME_CANDIDATES = IS_WINDOWS
 const RECENT_SAMPLE = 50;
 let LicenseService = class LicenseService {
     licenseQueue = Promise.resolve();
+    blockedUntil = 0;
+    turnstileStreak = 0;
     browser = null;
     chromeProc = null;
     idleTimer = null;
@@ -102,6 +106,7 @@ let LicenseService = class LicenseService {
         recentMs: [],
         failStreak: 0,
         worstFailStreak: 0,
+        turnstileBlocked: 0,
     };
     async onModuleDestroy() {
         await this.disposeBrowser();
@@ -114,7 +119,9 @@ let LicenseService = class LicenseService {
             recentMs: [...r],
             queueBusy: this.busy,
             browserAlive: this.browser?.isConnected() ?? false,
-            avgMs: r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : null,
+            avgMs: r.length
+                ? Math.round(r.reduce((a, b) => a + b, 0) / r.length)
+                : null,
         };
     }
     busy = false;
@@ -134,6 +141,16 @@ let LicenseService = class LicenseService {
         let page = null;
         const startedAt = Date.now();
         const took = () => Date.now() - startedAt;
+        const waitMs = this.blockedUntil - Date.now();
+        if (waitMs > 0) {
+            this.stats.turnstileBlocked++;
+            throw new common_1.ServiceUnavailableException({
+                message: `Registry challenge is refusing this address — ` +
+                    `not retrying for another ${Math.ceil(waitMs / 1000)}s`,
+                retryAfterSec: Math.ceil(waitMs / 1000),
+                blockedUntil: new Date(this.blockedUntil).toISOString(),
+            });
+        }
         this.busy = true;
         this.stats.total++;
         this.logger.log(`▶ START TIN=${tin} (lookup #${this.stats.total})`);
@@ -167,6 +184,8 @@ let LicenseService = class LicenseService {
                     ` in ${took()}ms`);
                 return all;
             }
+            this.turnstileStreak = 0;
+            this.blockedUntil = 0;
             throw new Error('Turnstile token not obtained — the lookup never reached the registry');
         }
         catch (err) {

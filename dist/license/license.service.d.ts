@@ -16,9 +16,12 @@ export interface LicenseStats {
     recentMs: number[];
     failStreak: number;
     worstFailStreak: number;
+    turnstileBlocked: number;
 }
 export declare class LicenseService implements OnModuleDestroy {
     private licenseQueue;
+    private blockedUntil;
+    private turnstileStreak;
     private browser;
     private chromeProc;
     private idleTimer;

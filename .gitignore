@@ -13,3 +13,6 @@ node_modules/
 
 # Python virtualenv for the captcha solver (created per machine)
 .venv/
+
+# Runtime log file written by log-file.ts
+/logs/
