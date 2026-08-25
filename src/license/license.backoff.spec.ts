@@ -162,3 +162,48 @@ describe('log redaction', () => {
     expect(stripAnsi(`${esc}[32m[Nest]${esc}[39m ready`)).toBe('[Nest] ready');
   });
 });
+
+describe('LicenseService — idle shutdown', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('does not close the browser while a lookup is running', async () => {
+    // What happened on 25 Aug: the countdown from one lookup elapsed during
+    // the next one, Chrome went away underneath it, and the failure was
+    // reported as the registry refusing us.
+    const svc = new LicenseService() as any;
+    svc.disposeBrowser = jest.fn().mockResolvedValue(undefined);
+
+    svc.busy = true;
+    svc.scheduleIdleShutdown();
+    jest.advanceTimersByTime(11 * 60 * 1000);
+
+    expect(svc.disposeBrowser).not.toHaveBeenCalled();
+  });
+
+  it('closes it once nothing is running', async () => {
+    const svc = new LicenseService() as any;
+    svc.disposeBrowser = jest.fn().mockResolvedValue(undefined);
+
+    svc.busy = false;
+    svc.scheduleIdleShutdown();
+    jest.advanceTimersByTime(11 * 60 * 1000);
+
+    expect(svc.disposeBrowser).toHaveBeenCalled();
+  });
+
+  it('closes it on the next round once the lookup ends', async () => {
+    // Deferring must not mean never: the memory is worth reclaiming.
+    const svc = new LicenseService() as any;
+    svc.disposeBrowser = jest.fn().mockResolvedValue(undefined);
+
+    svc.busy = true;
+    svc.scheduleIdleShutdown();
+    jest.advanceTimersByTime(11 * 60 * 1000);
+    expect(svc.disposeBrowser).not.toHaveBeenCalled();
+
+    svc.busy = false;
+    jest.advanceTimersByTime(11 * 60 * 1000);
+    expect(svc.disposeBrowser).toHaveBeenCalled();
+  });
+});

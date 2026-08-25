@@ -334,6 +334,11 @@ let LicenseService = class LicenseService {
         if (this.idleTimer)
             clearTimeout(this.idleTimer);
         this.idleTimer = setTimeout(() => {
+            if (this.busy) {
+                this.logger.debug('idle timer fired mid-lookup — deferring');
+                this.scheduleIdleShutdown();
+                return;
+            }
             this.logger.log('idle — closing Chrome to release memory');
             void this.disposeBrowser();
         }, BROWSER_IDLE_MS);

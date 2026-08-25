@@ -515,10 +515,29 @@ export class LicenseService implements OnModuleDestroy {
     this.chromeProc = null;
   }
 
-  /** Restarts the idle countdown after every lookup. */
+  /**
+   * Restarts the idle countdown after every lookup.
+   *
+   * The timer checks whether anything is running before it acts. It used to
+   * fire regardless, and on 25 Aug it closed Chrome in the middle of a lookup:
+   * the countdown started when the previous lookup finished, the next one
+   * began eight minutes later, and two minutes after that the browser went
+   * away underneath it. The lookup then failed as "Turnstile did not solve",
+   * which reads like the registry refusing us and is really us shutting our
+   * own browser.
+   *
+   * Re-armed rather than cancelled when busy: the lookup in flight will
+   * schedule its own countdown when it finishes, but only if it finishes
+   * normally, and this way a crash still leaves a timer behind.
+   */
   private scheduleIdleShutdown(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
+      if (this.busy) {
+        this.logger.debug('idle timer fired mid-lookup — deferring');
+        this.scheduleIdleShutdown();
+        return;
+      }
       this.logger.log('idle — closing Chrome to release memory');
       void this.disposeBrowser();
     }, BROWSER_IDLE_MS);
