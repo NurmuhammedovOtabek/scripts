@@ -29,6 +29,9 @@ let AppController = class AppController {
     getSud(tin, caseNumber) {
         return this.appService.getCourtCases(tin, caseNumber);
     }
+    getBirdarcha(pin) {
+        return this.appService.getBirdarcha(pin);
+    }
     getHealth() {
         return this.appService.getHealth();
     }
@@ -83,6 +86,13 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "getSud", null);
+__decorate([
+    (0, common_1.Get)('birdarcha'),
+    __param(0, (0, common_1.Query)('pin')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getBirdarcha", null);
 __decorate([
     (0, common_1.Get)('health'),
     __metadata("design:type", Function),

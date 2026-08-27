@@ -15,6 +15,7 @@ import { GarovModule } from './garov/garov.module';
 import { SertModule } from './sert/sert.module';
 import { MibModule } from './mib/mib.module';
 import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
+import { BirdarchaModule } from './birdarcha/birdarcha.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
     SertModule,
     MibModule,
     LargeTaxpayerModule,
+    BirdarchaModule,
   ],
   controllers: [AppController, LogsController],
   providers: [AppService],

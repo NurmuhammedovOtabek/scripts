@@ -20,6 +20,11 @@ export class AppController {
     return this.appService.getCourtCases(tin, caseNumber);
   }
 
+  @Get('birdarcha')
+  getBirdarcha(@Query('pin') pin: string) {
+    return this.appService.getBirdarcha(pin);
+  }
+
   @Get('health')
   getHealth() {
     return this.appService.getHealth();

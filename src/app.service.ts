@@ -1,3 +1,4 @@
+import { BirdarchaService } from './birdarcha/birdarcha.service';
 import { Injectable } from '@nestjs/common';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
@@ -23,6 +24,7 @@ export class AppService {
     private readonly sert: SertScriptService,
     private readonly mib: MibScriptService,
     private readonly largeTaxpayer: LargeTaxpayerService,
+    private readonly birdarcha: BirdarchaService,
   ) {}
 
   getFromStatus(inn: string) {
@@ -123,5 +125,10 @@ export class AppService {
   /** Large-taxpayer register membership. */
   getLargeTaxpayer(tin: string) {
     return this.largeTaxpayer.checkByInn(tin);
+  }
+
+  /** One trader from the Ministry of Justice registration register. */
+  getBirdarcha(pin: string) {
+    return this.birdarcha.getTraderByPinfl(pin);
   }
 }

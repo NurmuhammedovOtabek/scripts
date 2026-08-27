@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppService = void 0;
+const birdarcha_service_1 = require("./birdarcha/birdarcha.service");
 const common_1 = require("@nestjs/common");
 const stat_registry_service_1 = require("./stat-registry/stat-registry.service");
 const court_cases_service_1 = require("./court-cases/court-cases.service");
@@ -32,7 +33,8 @@ let AppService = class AppService {
     sert;
     mib;
     largeTaxpayer;
-    constructor(statRegistry, courtCases, license, davreestr, taxRisk, taxDebtor, garov, sert, mib, largeTaxpayer) {
+    birdarcha;
+    constructor(statRegistry, courtCases, license, davreestr, taxRisk, taxDebtor, garov, sert, mib, largeTaxpayer, birdarcha) {
         this.statRegistry = statRegistry;
         this.courtCases = courtCases;
         this.license = license;
@@ -43,6 +45,7 @@ let AppService = class AppService {
         this.sert = sert;
         this.mib = mib;
         this.largeTaxpayer = largeTaxpayer;
+        this.birdarcha = birdarcha;
     }
     getFromStatus(inn) {
         return this.statRegistry.getFromStatus(inn);
@@ -107,6 +110,9 @@ let AppService = class AppService {
     getLargeTaxpayer(tin) {
         return this.largeTaxpayer.checkByInn(tin);
     }
+    getBirdarcha(pin) {
+        return this.birdarcha.getTraderByPinfl(pin);
+    }
 };
 exports.AppService = AppService;
 exports.AppService = AppService = __decorate([
@@ -120,6 +126,7 @@ exports.AppService = AppService = __decorate([
         garov_service_1.GarovService,
         sert_service_1.SertScriptService,
         mib_service_1.MibScriptService,
-        large_taxpayer_service_1.LargeTaxpayerService])
+        large_taxpayer_service_1.LargeTaxpayerService,
+        birdarcha_service_1.BirdarchaService])
 ], AppService);
 //# sourceMappingURL=app.service.js.map

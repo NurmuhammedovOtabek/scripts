@@ -9,6 +9,7 @@ export declare class AppController {
         tin: string | undefined;
         caseNumber: string | undefined;
     }>;
+    getBirdarcha(pin: string): Promise<import("./birdarcha/birdarcha.service").BirdarchaLookup>;
     getHealth(): {
         status: string;
         reason: string | null;
