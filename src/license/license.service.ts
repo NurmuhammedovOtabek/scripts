@@ -714,8 +714,23 @@ export class LicenseService implements OnModuleDestroy {
       { waitUntil: 'domcontentloaded', timeout: 30_000 },
     );
 
-    await page.waitForLoadState('networkidle').catch(() => {});
-    this.logger.log(`page ready in ${Date.now() - navAt}ms`);
+    // Nothing is waited for here on purpose.
+    //
+    // This used to be `waitForLoadState('networkidle')` — a 500ms gap in
+    // network activity that this page never has, so it ran to its 30s ceiling
+    // every time and the `.catch()` swallowed the timeout. Measured on the
+    // box: `page ready in 30362ms` followed by `Turnstile solved in 43ms` —
+    // thirty seconds spent waiting for something already there. Every lookup
+    // paid it, roughly 30s of a 36s total.
+    //
+    // Waiting for the registry's own answer instead does not work and was
+    // tried: that request is only made *after* the challenge resolves, so
+    // waiting for it before the token exists deadlocks until both budgets
+    // expire — 105s and a failure, in the run that proved it.
+    //
+    // `extractTurnstileToken` below does its own bounded wait for the token,
+    // which is the thing this step was accidentally standing in for.
+    this.logger.log(`page loaded in ${Date.now() - navAt}ms`);
 
     const solveAt = Date.now();
     const turnstileToken = await this.extractTurnstileToken(page);

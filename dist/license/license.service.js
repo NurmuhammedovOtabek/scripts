@@ -448,8 +448,7 @@ let LicenseService = class LicenseService {
         this.logger.log(`navigating to registry for TIN=${tin} (page ${pageNo})`);
         const navAt = Date.now();
         await page.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        await page.waitForLoadState('networkidle').catch(() => { });
-        this.logger.log(`page ready in ${Date.now() - navAt}ms`);
+        this.logger.log(`page loaded in ${Date.now() - navAt}ms`);
         const solveAt = Date.now();
         const turnstileToken = await this.extractTurnstileToken(page);
         const solveMs = Date.now() - solveAt;
