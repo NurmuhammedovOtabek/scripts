@@ -1,4 +1,5 @@
 import { BirdarchaService } from './birdarcha/birdarcha.service';
+import { EjarimaService } from './ejarima/ejarima.service';
 import { Injectable } from '@nestjs/common';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
@@ -25,6 +26,7 @@ export class AppService {
     private readonly mib: MibScriptService,
     private readonly largeTaxpayer: LargeTaxpayerService,
     private readonly birdarcha: BirdarchaService,
+    private readonly ejarima: EjarimaService,
   ) {}
 
   getFromStatus(inn: string) {
@@ -130,5 +132,20 @@ export class AppService {
   /** One trader from the Ministry of Justice registration register. */
   getBirdarcha(pin: string) {
     return this.birdarcha.getTraderByPinfl(pin);
+  }
+
+  /**
+   * Administrative penalties for a person, by passport.
+   *
+   * `html` is opt-in because the results page is around 300KB and the parsed
+   * rows are what a caller normally wants; the backend asks for the page
+   * itself when something needs reading that the parser was not written for.
+   */
+  getEjarimaByPassport(serial: string, number: string, html?: string) {
+    return this.ejarima.getByPassport(
+      serial,
+      number,
+      html === '1' || html === 'true',
+    );
   }
 }

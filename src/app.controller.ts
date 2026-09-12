@@ -25,6 +25,15 @@ export class AppController {
     return this.appService.getBirdarcha(pin);
   }
 
+  @Get('ejarima')
+  getEjarima(
+    @Query('serial') serial: string,
+    @Query('number') number: string,
+    @Query('html') html?: string,
+  ) {
+    return this.appService.getEjarimaByPassport(serial, number, html);
+  }
+
   @Get('health')
   getHealth() {
     return this.appService.getHealth();
