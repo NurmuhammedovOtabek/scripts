@@ -16,6 +16,7 @@ import { SertModule } from './sert/sert.module';
 import { MibModule } from './mib/mib.module';
 import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
 import { BirdarchaModule } from './birdarcha/birdarcha.module';
+import { EjarimaModule } from './ejarima/ejarima.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { BirdarchaModule } from './birdarcha/birdarcha.module';
     MibModule,
     LargeTaxpayerModule,
     BirdarchaModule,
+    EjarimaModule,
   ],
   controllers: [AppController, LogsController],
   providers: [AppService],
