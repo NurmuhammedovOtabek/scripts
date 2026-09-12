@@ -32,6 +32,9 @@ let AppController = class AppController {
     getBirdarcha(pin) {
         return this.appService.getBirdarcha(pin);
     }
+    getEjarima(serial, number, html) {
+        return this.appService.getEjarimaByPassport(serial, number, html);
+    }
     getHealth() {
         return this.appService.getHealth();
     }
@@ -93,6 +96,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "getBirdarcha", null);
+__decorate([
+    (0, common_1.Get)('ejarima'),
+    __param(0, (0, common_1.Query)('serial')),
+    __param(1, (0, common_1.Query)('number')),
+    __param(2, (0, common_1.Query)('html')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getEjarima", null);
 __decorate([
     (0, common_1.Get)('health'),
     __metadata("design:type", Function),
