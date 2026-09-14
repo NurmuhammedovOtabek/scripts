@@ -107,6 +107,7 @@ let LicenseService = class LicenseService {
         failStreak: 0,
         worstFailStreak: 0,
         turnstileBlocked: 0,
+        registryNoAnswer: 0,
     };
     async onModuleDestroy() {
         await this.disposeBrowser();
@@ -193,7 +194,14 @@ let LicenseService = class LicenseService {
                 this.logger.log(`✔ DONE TIN=${tin} — the registry holds none, in ${took()}ms`);
                 return [];
             }
-            throw new Error('Turnstile token not obtained — the lookup never reached the registry');
+            if (!first.token) {
+                throw new Error('Turnstile token not obtained — the lookup never reached the registry');
+            }
+            if (!first.answered) {
+                this.stats.registryNoAnswer++;
+                throw new Error(`Registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s — the challenge was solved; the registry is slow`);
+            }
+            throw new Error('Registry answered without a count or any certificates — its response shape may have changed');
         }
         catch (err) {
             const alive = this.browser?.isConnected() ?? false;
@@ -394,6 +402,12 @@ let LicenseService = class LicenseService {
         const collectedCertificates = [];
         let capturedToken = null;
         let reportedTotal = null;
+        let searchParsed = Promise.resolve();
+        let searchSeenAt = 0;
+        let resolveSearch = () => undefined;
+        const searchAnswered = new Promise((resolve) => {
+            resolveSearch = resolve;
+        });
         page.on('response', async (resp) => {
             try {
                 const url = resp.url();
@@ -417,8 +431,10 @@ let LicenseService = class LicenseService {
                     this.logger.debug(`registry request: ${url}`);
                 }
                 if (url.includes('open_source') && status === 200) {
-                    const body = await resp.json().catch(() => null);
-                    if (body) {
+                    const parsed = (async () => {
+                        const body = await resp.json().catch(() => null);
+                        if (!body)
+                            return;
                         const certs = body?.data?.certificates;
                         if (Array.isArray(certs) && certs.length > 0) {
                             for (const c of certs)
@@ -438,7 +454,13 @@ let LicenseService = class LicenseService {
                             collectedUuids.add(String(body.uuid));
                         if (body?.data?.uuid)
                             collectedUuids.add(String(body.data.uuid));
+                    })();
+                    if (token && !searchSeenAt) {
+                        searchParsed = parsed;
+                        searchSeenAt = Date.now();
+                        resolveSearch();
                     }
+                    await parsed;
                 }
             }
             catch (err) {
@@ -462,24 +484,33 @@ let LicenseService = class LicenseService {
                 Math.max(1, this.stats.turnstileSolved + this.stats.turnstileTimeout);
             this.logger.warn(`Turnstile TIMED OUT after ${solveMs}ms — timeout rate ${(share * 100).toFixed(0)}% (${this.stats.turnstileTimeout}/${this.stats.turnstileSolved + this.stats.turnstileTimeout})`);
         }
-        if (turnstileToken || capturedToken) {
-            await page.waitForTimeout(5000);
+        let answered = searchSeenAt > 0;
+        if (!answered && (turnstileToken || capturedToken)) {
+            let timer;
+            answered = await Promise.race([
+                searchAnswered.then(() => true),
+                new Promise((resolve) => {
+                    timer = setTimeout(() => resolve(false), PAGE_RESPONSE_TIMEOUT_MS);
+                }),
+            ]);
+            if (timer)
+                clearTimeout(timer);
+        }
+        if (answered) {
+            await searchParsed.catch(() => undefined);
+            this.logger.log(`registry answered the search ${searchSeenAt - navAt}ms after navigation`);
+        }
+        else if (turnstileToken || capturedToken) {
+            this.logger.warn(`registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s of the challenge`);
         }
         const token = capturedToken || turnstileToken;
-        if (token && collectedUuids.size > 0) {
+        if (token) {
             return {
                 token,
                 uuids: [...collectedUuids],
                 certificates: collectedCertificates,
                 total: reportedTotal,
-            };
-        }
-        if (token) {
-            return {
-                token,
-                uuids: [],
-                certificates: collectedCertificates,
-                total: reportedTotal,
+                answered,
             };
         }
         try {
@@ -502,6 +533,7 @@ let LicenseService = class LicenseService {
                         uuids: [...collectedUuids],
                         certificates: collectedCertificates,
                         total: reportedTotal,
+                        answered: true,
                     };
                 }
             }

@@ -342,3 +342,83 @@ describe('LicenseService — a company with no permits', () => {
     expect(svc.turnstileStreak).toBe(1);
   });
 });
+
+describe('LicenseService — a registry that is slow to answer', () => {
+  /**
+   * The challenge is solved and the search goes out with its token, but the
+   * registry answers later than the page waits.
+   *
+   * Measured 14 Sep: 31s for the search carrying the token, 35ms for the same
+   * endpoint refusing a token-less request. The page used to wait a flat five
+   * seconds and report "Turnstile token not obtained", which armed the
+   * ten-minute backoff over a registry that was merely slow — and the backend
+   * turned that into a stream of refusals and one alert per company.
+   */
+  const slowRegistry = (answered: boolean) => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockResolvedValue({
+      contexts: () => [
+        { newPage: async () => ({ close: async () => {}, context: () => ({}) }) },
+      ],
+      isConnected: () => true,
+    });
+    svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
+      token: 'a-real-token',
+      uuids: [],
+      certificates: [],
+      total: null,
+      answered,
+    });
+    return svc;
+  };
+
+  it('fails the lookup rather than reporting no permits', async () => {
+    const svc = slowRegistry(false);
+
+    await expect(svc.getLicensesByTin('311142996')).rejects.toThrow(
+      /did not answer/,
+    );
+  });
+
+  it('does not call it a Turnstile failure', async () => {
+    const svc = slowRegistry(false);
+
+    const err = await svc.getLicensesByTin('311142996').catch((e: any) => e);
+
+    expect(String(err.message)).not.toMatch(/Turnstile/i);
+  });
+
+  it('does not arm the backoff, however many come in a row', async () => {
+    const svc = slowRegistry(false);
+
+    for (let i = 0; i < 5; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.blockedUntil).toBe(0);
+  });
+
+  it('counts it apart, so an operator can tell slow from refused', async () => {
+    const svc = slowRegistry(false);
+
+    await svc.getLicensesByTin('300000001').catch(() => undefined);
+    await svc.getLicensesByTin('300000002').catch(() => undefined);
+    const s = svc.getStats();
+
+    expect(s.registryNoAnswer).toBe(2);
+    expect(s.failed).toBe(2);
+    expect(s.turnstileBlocked).toBe(0);
+  });
+
+  it('an answer with no count and nothing in it fails too — but is not a refusal', async () => {
+    const svc = slowRegistry(true);
+
+    const err = await svc.getLicensesByTin('311142996').catch((e: any) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err.message)).not.toMatch(/Turnstile/i);
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.getStats().registryNoAnswer).toBe(0);
+  });
+});
