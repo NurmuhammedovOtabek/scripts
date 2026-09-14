@@ -4,25 +4,25 @@ import {
   Logger,
   ServiceUnavailableException,
   type OnModuleDestroy,
-} from '@nestjs/common';
-import axios from 'axios';
-import { spawn, execSync, type ChildProcess } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+} from "@nestjs/common";
+import axios from "axios";
+import { spawn, execSync, type ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
   chromium,
   type Browser,
   type Page,
   type Response as PwResponse,
   type BrowserContext,
-} from 'playwright';
+} from "playwright";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const API_BASE = 'https://api.licenses.uz';
-const SITE_URL = 'https://license.gov.uz';
-const OPEN_SOURCE_PATH = '/v1/register/open_source';
+const API_BASE = "https://api.licenses.uz";
+const SITE_URL = "https://license.gov.uz";
+const OPEN_SOURCE_PATH = "/v1/register/open_source";
 
 const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
@@ -50,7 +50,7 @@ const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
  * anything but the far side turning us away.
  */
 const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(
-  process.env.TURNSTILE_STREAK ?? '3',
+  process.env.TURNSTILE_STREAK ?? "3",
   10,
 );
 
@@ -70,11 +70,11 @@ const UUID_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const CDP_PORT = 19222;
-const IS_WINDOWS = process.platform === 'win32';
+const IS_WINDOWS = process.platform === "win32";
 
 /**
  * How long an idle Chrome is kept alive. Holding it costs ~400MB, so on a
@@ -85,18 +85,18 @@ const BROWSER_IDLE_MS = 10 * 60 * 1000;
 
 const CHROME_CANDIDATES = IS_WINDOWS
   ? [
-      `${process.env['PROGRAMFILES']}\\Google\\Chrome\\Application\\chrome.exe`,
-      `${process.env['PROGRAMFILES(X86)']}\\Google\\Chrome\\Application\\chrome.exe`,
-      `${process.env['LOCALAPPDATA']}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env["PROGRAMFILES"]}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env["PROGRAMFILES(X86)"]}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env["LOCALAPPDATA"]}\\Google\\Chrome\\Application\\chrome.exe`,
     ]
   : [
       // macOS — the app bundle is the only place Chrome installs itself.
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/snap/bin/chromium',
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/chromium",
+      "/snap/bin/chromium",
     ];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -117,6 +117,14 @@ interface CapturedTokenData {
    * solve", which is what arms the backoff.
    */
   answered: boolean;
+  /**
+   * The status the registry answered the search with, when it was not 200.
+   *
+   * Its own server gives up on a slow search after about thirty seconds and
+   * says 500. That is an answer, and it arrives well inside the wait — so it
+   * is recorded rather than waited past.
+   */
+  searchStatus: number | null;
 }
 
 /**
@@ -160,6 +168,18 @@ export interface LicenseStats {
    * a refusal, and must not arm the backoff.
    */
   registryNoAnswer: number;
+  /**
+   * Lookups whose search the registry answered with an error status — its
+   * own server failing, most often on a search slower than it allows. A 403
+   * or 429 is a refusal instead, and is not counted here.
+   */
+  registryError: number;
+  /**
+   * Walks a later page would not finish, even asked twice. Failed rather
+   * than returned: a short list handed over as complete is stored as the
+   * company's whole record.
+   */
+  partialWalks: number;
 }
 
 const RECENT_SAMPLE = 50;
@@ -189,7 +209,7 @@ export class LicenseService implements OnModuleDestroy {
   private chromeProc: ChildProcess | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
 
-  private readonly logger = new Logger('License');
+  private readonly logger = new Logger("License");
 
   private readonly stats: LicenseStats = {
     startedAt: new Date().toISOString(),
@@ -209,6 +229,8 @@ export class LicenseService implements OnModuleDestroy {
     worstFailStreak: 0,
     turnstileBlocked: 0,
     registryNoAnswer: 0,
+    registryError: 0,
+    partialWalks: 0,
   };
 
   async onModuleDestroy(): Promise<void> {
@@ -287,7 +309,30 @@ export class LicenseService implements OnModuleDestroy {
       page = await context.newPage();
 
       const first = await this.captureTokenFromBrowser(page, tin, 1);
+
+      // The registry answered the search, with an error.
+      //
+      // Measured 14 Sep in a slow spell: the search went out with its token
+      // and came back HTTP 500 thirty seconds later — the registry's own
+      // server giving up — while the searches either side of it answered 200
+      // in 33s. The page used to ignore it and wait on for a 200, so it
+      // surfaced fifteen seconds later as "the registry did not answer",
+      // which is not what happened.
+      if (first.token && typeof first.searchStatus === "number") {
+        if (first.searchStatus === 403 || first.searchStatus === 429) {
+          throw new Error(
+            `Registry refused the search: HTTP ${first.searchStatus} — rate limit or block`,
+          );
+        }
+        this.stats.registryError++;
+        throw new Error(
+          `Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows`,
+        );
+      }
+
       const all: LicenseDetail[] = [...first.certificates];
+      /** The page that would not answer, if one stopped the walk. */
+      let failedPage = 0;
 
       // The site shows 10 per page. Anything beyond that has to be walked, and
       // it has to be walked through the browser: the Turnstile token is
@@ -301,12 +346,36 @@ export class LicenseService implements OnModuleDestroy {
         for (let pageNo = 2; pageNo <= MAX_LICENSE_PAGES; pageNo++) {
           if (first.total !== null && all.length >= first.total) break;
 
-          const next = await this.fetchPage(context, tin, pageNo);
+          let next = await this.fetchPage(context, tin, pageNo);
+          // One more try for a page that did not answer. A walk is only worth
+          // anything whole, and a slow spell fails pages at random: without
+          // this, one bad page in fourteen would fail the whole company.
+          if (next === null) next = await this.fetchPage(context, tin, pageNo);
+          if (next === null) {
+            failedPage = pageNo;
+            break;
+          }
           if (next.length === 0) break;
 
           all.push(...next);
           if (next.length < LICENSE_PAGE_SIZE) break;
         }
+      }
+
+      // A walk cut short is a failure, not an answer.
+      //
+      // A page that would not answer used to end the walk, and what had been
+      // collected went back as the company's whole record — 30 of 39 on
+      // 14 Sep, answered 200 and stored as complete, with nothing to fetch
+      // the other nine before the weekly refresh. Failing hands the company
+      // back to be walked again.
+      if (failedPage) {
+        this.stats.partialWalks++;
+        throw new Error(
+          `Registry answered only part of the list: ${all.length}` +
+            (first.total !== null ? ` of ${first.total}` : "") +
+            ` — page ${failedPage} did not answer, even asked twice`,
+        );
       }
 
       if (all.length > 0) {
@@ -328,7 +397,7 @@ export class LicenseService implements OnModuleDestroy {
         this.recordOk(all.length, took());
         this.logger.log(
           `✔ DONE TIN=${tin} — ${all.length} cert(s)` +
-            (first.total !== null ? ` of ${first.total}` : '') +
+            (first.total !== null ? ` of ${first.total}` : "") +
             ` in ${took()}ms`,
         );
         return all;
@@ -361,7 +430,7 @@ export class LicenseService implements OnModuleDestroy {
       // the ten-minute backoff, so the other two must not say it.
       if (!first.token) {
         throw new Error(
-          'Turnstile token not obtained — the lookup never reached the registry',
+          "Turnstile token not obtained — the lookup never reached the registry",
         );
       }
 
@@ -379,7 +448,7 @@ export class LicenseService implements OnModuleDestroy {
         );
       }
       throw new Error(
-        'Registry answered without a count or any certificates — its response shape may have changed',
+        "Registry answered without a count or any certificates — its response shape may have changed",
       );
     } catch (err) {
       // Only tear Chrome down when it actually died. A lookup that merely
@@ -387,7 +456,7 @@ export class LicenseService implements OnModuleDestroy {
       const alive = this.browser?.isConnected() ?? false;
       if (this.browser && !alive) {
         this.logger.error(
-          'Chrome died mid-lookup — disposing so the next call respawns',
+          "Chrome died mid-lookup — disposing so the next call respawns",
         );
         await this.disposeBrowser();
       }
@@ -396,7 +465,9 @@ export class LicenseService implements OnModuleDestroy {
       // A challenge failure says something about the far side; every other
       // kind says something about us, and only the first is worth backing off
       // for. Counted separately for that reason.
-      if (/Turnstile/i.test(msg)) {
+      // A search refused outright (403/429) counts too: it is the same far
+      // side deciding it has had enough of this address.
+      if (/Turnstile|Registry refused the search/i.test(msg)) {
         this.turnstileStreak++;
         if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
           this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
@@ -500,33 +571,33 @@ export class LicenseService implements OnModuleDestroy {
     if (!(await this.isCdpUp())) {
       const chromePath = this.findChromePath();
       if (!chromePath) {
-        throw new Error('Google Chrome not found. Install Chrome to proceed.');
+        throw new Error("Google Chrome not found. Install Chrome to proceed.");
       }
 
-      const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
+      const userDataDir = path.join(os.tmpdir(), "license-cdp-chrome");
 
       const chromeArgs = [
         `--remote-debugging-port=${CDP_PORT}`,
         `--user-data-dir=${userDataDir}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-popup-blocking',
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-popup-blocking",
       ];
 
       if (!IS_WINDOWS) {
         chromeArgs.push(
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
         );
       }
 
-      chromeArgs.push('about:blank');
+      chromeArgs.push("about:blank");
 
       this.chromeProc = spawn(chromePath, chromeArgs, {
         detached: true,
-        stdio: 'ignore',
+        stdio: "ignore",
       });
       this.chromeProc.unref();
       this.stats.chromeSpawns++;
@@ -536,13 +607,13 @@ export class LicenseService implements OnModuleDestroy {
 
       await this.waitForCdpReady();
     } else {
-      this.logger.log('reusing Chrome already listening on CDP');
+      this.logger.log("reusing Chrome already listening on CDP");
     }
 
     this.browser = await chromium.connectOverCDP(
       `http://localhost:${CDP_PORT}`,
     );
-    this.logger.log('connected to Chrome (kept alive between lookups)');
+    this.logger.log("connected to Chrome (kept alive between lookups)");
     return this.browser;
   }
 
@@ -589,11 +660,11 @@ export class LicenseService implements OnModuleDestroy {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.busy) {
-        this.logger.debug('idle timer fired mid-lookup — deferring');
+        this.logger.debug("idle timer fired mid-lookup — deferring");
         this.scheduleIdleShutdown();
         return;
       }
-      this.logger.log('idle — closing Chrome to release memory');
+      this.logger.log("idle — closing Chrome to release memory");
       void this.disposeBrowser();
     }, BROWSER_IDLE_MS);
     // Never hold the event loop open just for this timer.
@@ -604,9 +675,9 @@ export class LicenseService implements OnModuleDestroy {
     if (!proc?.pid) return;
     try {
       if (IS_WINDOWS) {
-        execSync(`taskkill /F /PID ${proc.pid} /T`, { stdio: 'ignore' });
+        execSync(`taskkill /F /PID ${proc.pid} /T`, { stdio: "ignore" });
       } else {
-        execSync(`kill -9 ${proc.pid}`, { stdio: 'ignore' });
+        execSync(`kill -9 ${proc.pid}`, { stdio: "ignore" });
       }
       this.logger.log(`Chrome process ${proc.pid} killed`);
     } catch {}
@@ -628,27 +699,35 @@ export class LicenseService implements OnModuleDestroy {
     context: BrowserContext,
     tin: string,
     pageNo: number,
-  ): Promise<LicenseDetail[]> {
+  ): Promise<LicenseDetail[] | null> {
     const tab = await context.newPage();
     const certs: LicenseDetail[] = [];
 
     try {
+      // Any status ends the wait: a page the registry answered with 500 is as
+      // finished as one it answered with 200, and waiting on for a 200 only
+      // spent the rest of the budget learning nothing.
       const answered = tab
-        .waitForResponse(
-          (r) => r.url().includes('open_source?tin=') && r.status() === 200,
-          { timeout: PAGE_RESPONSE_TIMEOUT_MS },
-        )
+        .waitForResponse((r) => r.url().includes("open_source?tin="), {
+          timeout: PAGE_RESPONSE_TIMEOUT_MS,
+        })
         .catch(() => null);
 
       await tab.goto(
         `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`,
-        { waitUntil: 'domcontentloaded', timeout: 30_000 },
+        { waitUntil: "domcontentloaded", timeout: 30_000 },
       );
 
       const resp = await answered;
       if (!resp) {
         this.logger.warn(`TIN=${tin} page ${pageNo} — no registry response`);
-        return certs;
+        return null;
+      }
+      if (resp.status() !== 200) {
+        this.logger.warn(
+          `TIN=${tin} page ${pageNo} — registry answered HTTP ${resp.status()}`,
+        );
+        return null;
       }
 
       const body = await resp.json().catch(() => null);
@@ -678,18 +757,19 @@ export class LicenseService implements OnModuleDestroy {
     // only awaited once the token is in hand (see below).
     let searchParsed: Promise<void> = Promise.resolve();
     let searchSeenAt = 0;
+    let searchStatus: number | null = null;
     let resolveSearch: () => void = () => undefined;
     const searchAnswered = new Promise<void>((resolve) => {
       resolveSearch = resolve;
     });
 
-    page.on('response', async (resp) => {
+    page.on("response", async (resp) => {
       try {
         const url = resp.url();
-        if (!url.includes('api.licenses.uz')) return;
+        if (!url.includes("api.licenses.uz")) return;
 
         const status = resp.status();
-        const token = resp.request().headers()['x-turnstile-token'];
+        const token = resp.request().headers()["x-turnstile-token"];
 
         // Every registry answer is tallied by status. A block would surface
         // here as 429/403 long before it shows up as a missing token.
@@ -697,24 +777,36 @@ export class LicenseService implements OnModuleDestroy {
         this.stats.apiStatus[key] = (this.stats.apiStatus[key] ?? 0) + 1;
         if (status === 429 || status === 403) {
           this.logger.error(
-            `⚠ REGISTRY REFUSED: HTTP ${status} on ${url.split('?')[0]} — rate limit or block`,
+            `⚠ REGISTRY REFUSED: HTTP ${status} on ${url.split("?")[0]} — rate limit or block`,
           );
         } else if (status >= 400) {
-          this.logger.warn(`registry HTTP ${status} on ${url.split('?')[0]}`);
+          this.logger.warn(`registry HTTP ${status} on ${url.split("?")[0]}`);
         }
 
         if (token && !capturedToken) {
           capturedToken = token;
-          this.logger.log('Turnstile token captured');
+          this.logger.log("Turnstile token captured");
         }
 
         // The exact query the site itself sends is the only reliable spec for
         // this API: it is undocumented and rejects guessed parameters with 400.
-        if (url.includes('open_source')) {
+        if (url.includes("open_source")) {
           this.logger.debug(`registry request: ${url}`);
         }
 
-        if (url.includes('open_source') && status === 200) {
+        // The search answered with an error is still the search answered —
+        // handed over at once, so the wait below ends here and not at its
+        // ceiling. See CapturedTokenData.searchStatus.
+        if (url.includes("open_source") && status !== 200 && token) {
+          if (!searchSeenAt) {
+            searchStatus = status;
+            searchSeenAt = Date.now();
+            resolveSearch();
+          }
+          return;
+        }
+
+        if (url.includes("open_source") && status === 200) {
           const parsed = (async () => {
             const body = await resp.json().catch(() => null);
             if (!body) return;
@@ -736,7 +828,7 @@ export class LicenseService implements OnModuleDestroy {
               body?.data?.total_items ??
               body?.data?.total ??
               body?.data?.totalCount;
-            if (typeof t === 'number') reportedTotal = t;
+            if (typeof t === "number") reportedTotal = t;
             const uuids = this.extractUuids(body);
             for (const id of uuids) collectedUuids.add(id);
             if (body?.uuid) collectedUuids.add(String(body.uuid));
@@ -764,7 +856,7 @@ export class LicenseService implements OnModuleDestroy {
     const navAt = Date.now();
     await page.goto(
       `${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`,
-      { waitUntil: 'domcontentloaded', timeout: 30_000 },
+      { waitUntil: "domcontentloaded", timeout: 30_000 },
     );
 
     // Nothing is waited for here on purpose.
@@ -827,7 +919,8 @@ export class LicenseService implements OnModuleDestroy {
     if (answered) {
       await searchParsed.catch(() => undefined);
       this.logger.log(
-        `registry answered the search ${searchSeenAt - navAt}ms after navigation`,
+        `registry answered the search ${searchSeenAt - navAt}ms after navigation` +
+          (searchStatus !== null ? ` — with HTTP ${searchStatus}` : ""),
       );
     } else if (turnstileToken || capturedToken) {
       this.logger.warn(
@@ -843,6 +936,7 @@ export class LicenseService implements OnModuleDestroy {
         certificates: collectedCertificates,
         total: reportedTotal,
         answered,
+        searchStatus,
       };
     }
 
@@ -857,7 +951,7 @@ export class LicenseService implements OnModuleDestroy {
 
       const detailResp = await detailPromise;
       if (detailResp) {
-        const tkn = detailResp.request().headers()['x-turnstile-token'];
+        const tkn = detailResp.request().headers()["x-turnstile-token"];
         if (tkn) {
           const urlUuids = detailResp.url().match(UUID_RE);
           if (urlUuids) for (const id of urlUuids) collectedUuids.add(id);
@@ -867,6 +961,7 @@ export class LicenseService implements OnModuleDestroy {
             certificates: collectedCertificates,
             total: reportedTotal,
             answered: true,
+            searchStatus: null,
           };
         }
       }
@@ -875,7 +970,7 @@ export class LicenseService implements OnModuleDestroy {
     }
 
     throw new Error(
-      'Could not obtain Turnstile token — Turnstile did not solve',
+      "Could not obtain Turnstile token — Turnstile did not solve",
     );
   }
 
@@ -883,7 +978,7 @@ export class LicenseService implements OnModuleDestroy {
 
   private async extractTurnstileToken(page: Page): Promise<string | null> {
     const hasTurnstile = await page.evaluate(() => ({
-      cfWidget: !!document.querySelector('.cf-turnstile'),
+      cfWidget: !!document.querySelector(".cf-turnstile"),
       cfIframe: !!document.querySelector('iframe[src*="turnstile"]'),
     }));
 
@@ -896,7 +991,7 @@ export class LicenseService implements OnModuleDestroy {
           .click({ timeout: 3000 });
       } catch {
         try {
-          await page.locator('.cf-turnstile').first().click({ timeout: 2000 });
+          await page.locator(".cf-turnstile").first().click({ timeout: 2000 });
         } catch {}
       }
     }
@@ -906,9 +1001,9 @@ export class LicenseService implements OnModuleDestroy {
         () => {
           try {
             const t = (window as any).turnstile;
-            if (t && typeof t.getResponse === 'function') {
+            if (t && typeof t.getResponse === "function") {
               const r = t.getResponse();
-              if (r && typeof r === 'string' && r.length > 20) return r;
+              if (r && typeof r === "string" && r.length > 20) return r;
             }
           } catch {}
 
@@ -917,11 +1012,11 @@ export class LicenseService implements OnModuleDestroy {
           ) as HTMLInputElement | null;
           if (input?.value && input.value.length > 20) return input.value;
 
-          const widget = document.querySelector('.cf-turnstile');
+          const widget = document.querySelector(".cf-turnstile");
           if (widget) {
             const val =
-              widget.getAttribute('data-response') ||
-              widget.getAttribute('data-token');
+              widget.getAttribute("data-response") ||
+              widget.getAttribute("data-token");
             if (val && val.length > 20) return val;
           }
 
@@ -940,10 +1035,10 @@ export class LicenseService implements OnModuleDestroy {
 
   private isTokenBearingResponse(resp: PwResponse): boolean {
     const url = resp.url();
-    if (!url.includes('api.licenses.uz')) return false;
-    if (!url.includes('open_source')) return false;
+    if (!url.includes("api.licenses.uz")) return false;
+    if (!url.includes("open_source")) return false;
     if (resp.status() !== 200) return false;
-    return !!resp.request().headers()['x-turnstile-token'];
+    return !!resp.request().headers()["x-turnstile-token"];
   }
 
   // ─── Result clicking (fallback) ───────────────────────────────────────
@@ -956,19 +1051,19 @@ export class LicenseService implements OnModuleDestroy {
       .catch(() => null);
     const minY = chipBox ? chipBox.y + chipBox.height + 50 : 380;
 
-    const allLinks = await page.locator('a:visible').all();
+    const allLinks = await page.locator("a:visible").all();
     for (let i = 0; i < allLinks.length; i++) {
       const link = allLinks[i];
       const box = await link.boundingBox().catch(() => null);
-      const text = ((await link.textContent()) || '').trim().slice(0, 60);
+      const text = ((await link.textContent()) || "").trim().slice(0, 60);
       if (!box) continue;
       if (box.y < minY || box.width < 20 || box.height < 10) continue;
-      if (text === 'Barcha' || text.startsWith('STIR')) continue;
+      if (text === "Barcha" || text.startsWith("STIR")) continue;
       await link.click();
       return;
     }
 
-    for (const label of ['License', 'Litsenziya', 'Ruxsatnoma']) {
+    for (const label of ["License", "Litsenziya", "Ruxsatnoma"]) {
       const el = page.getByText(label).first();
       const vis = await el.isVisible().catch(() => false);
       if (vis) {
@@ -981,11 +1076,11 @@ export class LicenseService implements OnModuleDestroy {
     }
 
     const clickInfo = await page.evaluate((minY: number) => {
-      const els = document.querySelectorAll('div, span, td, tr, li, article');
+      const els = document.querySelectorAll("div, span, td, tr, li, article");
       for (const el of els) {
         const rect = el.getBoundingClientRect();
         if (rect.top < minY || rect.width < 50 || rect.height < 20) continue;
-        if (window.getComputedStyle(el).cursor === 'pointer') {
+        if (window.getComputedStyle(el).cursor === "pointer") {
           (el as HTMLElement).click();
           return true;
         }
@@ -1004,7 +1099,7 @@ export class LicenseService implements OnModuleDestroy {
   // ─── UUID extraction ──────────────────────────────────────────────────
 
   private extractUuids(body: unknown): string[] {
-    if (!body || typeof body !== 'object') return [];
+    if (!body || typeof body !== "object") return [];
 
     const obj = body as Record<string, any>;
 
@@ -1021,11 +1116,11 @@ export class LicenseService implements OnModuleDestroy {
       items = arraySource;
     } else if (Array.isArray(obj?.data)) {
       items = obj.data;
-    } else if (obj?.data && typeof obj.data === 'object') {
+    } else if (obj?.data && typeof obj.data === "object") {
       const values = Object.values(obj.data);
       if (
         values.length > 0 &&
-        values.every((v) => v && typeof v === 'object')
+        values.every((v) => v && typeof v === "object")
       ) {
         items = values;
       }
@@ -1036,7 +1131,7 @@ export class LicenseService implements OnModuleDestroy {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     for (const item of items) {
-      if (!item || typeof item !== 'object') continue;
+      if (!item || typeof item !== "object") continue;
       const it = item as Record<string, any>;
 
       const id =
@@ -1047,7 +1142,7 @@ export class LicenseService implements OnModuleDestroy {
         it.certificateId ??
         it.certificate_id ??
         it.docId;
-      if (id && typeof id === 'string' && uuidPattern.test(id)) {
+      if (id && typeof id === "string" && uuidPattern.test(id)) {
         uuids.push(id);
       }
     }
@@ -1069,11 +1164,11 @@ export class LicenseService implements OnModuleDestroy {
 
   private buildApiHeaders(token: string): Record<string, string> {
     return {
-      Accept: 'application/json',
+      Accept: "application/json",
       Origin: SITE_URL,
       Referer: `${SITE_URL}/`,
-      'User-Agent': DEFAULT_USER_AGENT,
-      'x-turnstile-token': token,
+      "User-Agent": DEFAULT_USER_AGENT,
+      "x-turnstile-token": token,
     };
   }
 
@@ -1118,7 +1213,7 @@ export class LicenseService implements OnModuleDestroy {
       // The registry names this inconsistently across endpoints, so take
       // whichever it sends and treat a missing total as "keep going".
       const total = body?.total_items ?? body?.total ?? body?.totalCount;
-      if (typeof total === 'number') reportedTotal = total;
+      if (typeof total === "number") reportedTotal = total;
 
       if (certs.length < LICENSE_PAGE_SIZE) break;
       if (reportedTotal !== null && all.length >= reportedTotal) break;

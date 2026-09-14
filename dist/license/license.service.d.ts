@@ -1,4 +1,4 @@
-import { type OnModuleDestroy } from '@nestjs/common';
+import { type OnModuleDestroy } from "@nestjs/common";
 type LicenseDetail = any;
 export interface LicenseStats {
     startedAt: string;
@@ -18,6 +18,8 @@ export interface LicenseStats {
     worstFailStreak: number;
     turnstileBlocked: number;
     registryNoAnswer: number;
+    registryError: number;
+    partialWalks: number;
 }
 export declare class LicenseService implements OnModuleDestroy {
     private licenseQueue;
