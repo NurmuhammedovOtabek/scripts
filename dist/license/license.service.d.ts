@@ -17,6 +17,7 @@ export interface LicenseStats {
     failStreak: number;
     worstFailStreak: number;
     turnstileBlocked: number;
+    registryNoAnswer: number;
 }
 export declare class LicenseService implements OnModuleDestroy {
     private licenseQueue;

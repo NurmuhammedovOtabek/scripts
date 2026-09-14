@@ -109,6 +109,14 @@ interface CapturedTokenData {
   certificates: LicenseDetail[];
   /** What the registry says the full count is, when it says. */
   total: number | null;
+  /**
+   * Whether the registry answered the search at all.
+   *
+   * A token and no answer is its own failure: the challenge let us through
+   * and the registry was too slow. It must never read as "Turnstile did not
+   * solve", which is what arms the backoff.
+   */
+  answered: boolean;
 }
 
 /**
@@ -144,6 +152,14 @@ export interface LicenseStats {
    * being turned away cheaply instead of each spending a challenge.
    */
   turnstileBlocked: number;
+  /**
+   * Lookups where the challenge was solved and the registry never answered
+   * the search inside PAGE_RESPONSE_TIMEOUT_MS.
+   *
+   * Counted apart from Turnstile failures on purpose: a slow registry is not
+   * a refusal, and must not arm the backoff.
+   */
+  registryNoAnswer: number;
 }
 
 const RECENT_SAMPLE = 50;
@@ -192,6 +208,7 @@ export class LicenseService implements OnModuleDestroy {
     failStreak: 0,
     worstFailStreak: 0,
     turnstileBlocked: 0,
+    registryNoAnswer: 0,
   };
 
   async onModuleDestroy(): Promise<void> {
@@ -335,17 +352,34 @@ export class LicenseService implements OnModuleDestroy {
         return [];
       }
 
-      // No token and no response means the Turnstile challenge never resolved,
-      // so the registry was never actually asked anything. Returning [] here would be
-      // indistinguishable from "this company holds no licences", and a caller
-      // that caches it would store a false negative it never retries — the
-      // lookup fails often enough (roughly one in three under test) for that to
-      // poison the data. Fail loudly so the caller can try again later.
+      // Every failure from here on is thrown rather than recorded: the catch
+      // below is the single place that counts one. And none of them may return
+      // [] — that would be indistinguishable from "this company holds no
+      // licences", a false negative a caching caller never retries.
       //
-      // Thrown rather than recorded here: the catch below is the single place
-      // that counts a failure, so the stats stay consistent.
+      // Only the first is the challenge's. A message matching /Turnstile/ arms
+      // the ten-minute backoff, so the other two must not say it.
+      if (!first.token) {
+        throw new Error(
+          'Turnstile token not obtained — the lookup never reached the registry',
+        );
+      }
+
+      // The challenge was solved and the registry did not answer.
+      //
+      // This is what went wrong on 14 Sep. The search carrying the token took
+      // 31s to come back, while the same endpoint refused a token-less request
+      // in 35ms. The page waited a flat five seconds, saw nothing, and
+      // reported "Turnstile token not obtained": the backoff armed, the box
+      // refused the lookups after it, and the backend alerted once per company.
+      if (!first.answered) {
+        this.stats.registryNoAnswer++;
+        throw new Error(
+          `Registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s — the challenge was solved; the registry is slow`,
+        );
+      }
       throw new Error(
-        'Turnstile token not obtained — the lookup never reached the registry',
+        'Registry answered without a count or any certificates — its response shape may have changed',
       );
     } catch (err) {
       // Only tear Chrome down when it actually died. A lookup that merely
@@ -639,6 +673,16 @@ export class LicenseService implements OnModuleDestroy {
     let capturedToken: string | null = null;
     let reportedTotal: number | null = null;
 
+    // The registry's answer to the search — the one request carrying the
+    // token. Listened for from the start so a fast answer is never missed, and
+    // only awaited once the token is in hand (see below).
+    let searchParsed: Promise<void> = Promise.resolve();
+    let searchSeenAt = 0;
+    let resolveSearch: () => void = () => undefined;
+    const searchAnswered = new Promise<void>((resolve) => {
+      resolveSearch = resolve;
+    });
+
     page.on('response', async (resp) => {
       try {
         const url = resp.url();
@@ -671,8 +715,9 @@ export class LicenseService implements OnModuleDestroy {
         }
 
         if (url.includes('open_source') && status === 200) {
-          const body = await resp.json().catch(() => null);
-          if (body) {
+          const parsed = (async () => {
+            const body = await resp.json().catch(() => null);
+            if (!body) return;
             const certs = body?.data?.certificates;
             if (Array.isArray(certs) && certs.length > 0) {
               for (const c of certs) collectedCertificates.push(c);
@@ -696,7 +741,15 @@ export class LicenseService implements OnModuleDestroy {
             for (const id of uuids) collectedUuids.add(id);
             if (body?.uuid) collectedUuids.add(String(body.uuid));
             if (body?.data?.uuid) collectedUuids.add(String(body.data.uuid));
+          })();
+          // Handed over only once its body has been read, so "answered"
+          // means the certificates and the count are already in hand.
+          if (token && !searchSeenAt) {
+            searchParsed = parsed;
+            searchSeenAt = Date.now();
+            resolveSearch();
           }
+          await parsed;
         }
       } catch (err) {
         this.logger.warn(`response handler error: ${err}`);
@@ -723,10 +776,12 @@ export class LicenseService implements OnModuleDestroy {
     // thirty seconds spent waiting for something already there. Every lookup
     // paid it, roughly 30s of a 36s total.
     //
-    // Waiting for the registry's own answer instead does not work and was
+    // Blocking on the registry's own answer here does not work and was
     // tried: that request is only made *after* the challenge resolves, so
     // waiting for it before the token exists deadlocks until both budgets
-    // expire — 105s and a failure, in the run that proved it.
+    // expire — 105s and a failure, in the run that proved it. The answer is
+    // listened for from the start (searchAnswered) so a fast one is not
+    // missed; it is only *awaited* once the token is in hand.
     //
     // `extractTurnstileToken` below does its own bounded wait for the token,
     // which is the thing this step was accidentally standing in for.
@@ -751,26 +806,43 @@ export class LicenseService implements OnModuleDestroy {
       );
     }
 
-    if (turnstileToken || capturedToken) {
-      await page.waitForTimeout(5000);
+    // Wait for the registry's answer to the search, not a flat pause.
+    //
+    // This was `waitForTimeout(5000)`, sized for a registry that answered in a
+    // second or two. On 14 Sep the search took 31s; five seconds in there was
+    // nothing, and the lookup failed with a solved challenge in hand. The
+    // budget starts once the token exists and is the one every later page
+    // already gets in fetchPage.
+    let answered = searchSeenAt > 0;
+    if (!answered && (turnstileToken || capturedToken)) {
+      let timer: NodeJS.Timeout | undefined;
+      answered = await Promise.race([
+        searchAnswered.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), PAGE_RESPONSE_TIMEOUT_MS);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+    }
+    if (answered) {
+      await searchParsed.catch(() => undefined);
+      this.logger.log(
+        `registry answered the search ${searchSeenAt - navAt}ms after navigation`,
+      );
+    } else if (turnstileToken || capturedToken) {
+      this.logger.warn(
+        `registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s of the challenge`,
+      );
     }
 
     const token = capturedToken || turnstileToken;
-    if (token && collectedUuids.size > 0) {
+    if (token) {
       return {
         token,
         uuids: [...collectedUuids],
         certificates: collectedCertificates,
         total: reportedTotal,
-      };
-    }
-
-    if (token) {
-      return {
-        token,
-        uuids: [],
-        certificates: collectedCertificates,
-        total: reportedTotal,
+        answered,
       };
     }
 
@@ -794,6 +866,7 @@ export class LicenseService implements OnModuleDestroy {
             uuids: [...collectedUuids],
             certificates: collectedCertificates,
             total: reportedTotal,
+            answered: true,
           };
         }
       }
