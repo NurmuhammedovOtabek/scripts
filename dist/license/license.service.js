@@ -50,36 +50,36 @@ const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
 const playwright_1 = require("playwright");
-const API_BASE = 'https://api.licenses.uz';
-const SITE_URL = 'https://license.gov.uz';
-const OPEN_SOURCE_PATH = '/v1/register/open_source';
+const API_BASE = "https://api.licenses.uz";
+const SITE_URL = "https://license.gov.uz";
+const OPEN_SOURCE_PATH = "/v1/register/open_source";
 const TURNSTILE_SOLVE_TIMEOUT_MS = 25_000;
 const CLICK_RESPONSE_TIMEOUT_MS = 15_000;
 const AXIOS_TIMEOUT_MS = 15_000;
 const LICENSE_PAGE_SIZE = 10;
 const MAX_LICENSE_PAGES = 200;
 const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
-const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(process.env.TURNSTILE_STREAK ?? '3', 10);
+const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(process.env.TURNSTILE_STREAK ?? "3", 10);
 const TURNSTILE_COOLDOWN_MS = parseInt(process.env.TURNSTILE_COOLDOWN_MS ?? String(10 * 60 * 1000), 10);
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const CDP_PORT = 19222;
-const IS_WINDOWS = process.platform === 'win32';
+const IS_WINDOWS = process.platform === "win32";
 const BROWSER_IDLE_MS = 10 * 60 * 1000;
 const CHROME_CANDIDATES = IS_WINDOWS
     ? [
-        `${process.env['PROGRAMFILES']}\\Google\\Chrome\\Application\\chrome.exe`,
-        `${process.env['PROGRAMFILES(X86)']}\\Google\\Chrome\\Application\\chrome.exe`,
-        `${process.env['LOCALAPPDATA']}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${process.env["PROGRAMFILES"]}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${process.env["PROGRAMFILES(X86)"]}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${process.env["LOCALAPPDATA"]}\\Google\\Chrome\\Application\\chrome.exe`,
     ]
     : [
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/snap/bin/chromium',
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/snap/bin/chromium",
     ];
 const RECENT_SAMPLE = 50;
 let LicenseService = class LicenseService {
@@ -89,7 +89,7 @@ let LicenseService = class LicenseService {
     browser = null;
     chromeProc = null;
     idleTimer = null;
-    logger = new common_1.Logger('License');
+    logger = new common_1.Logger("License");
     stats = {
         startedAt: new Date().toISOString(),
         total: 0,
@@ -108,6 +108,8 @@ let LicenseService = class LicenseService {
         worstFailStreak: 0,
         turnstileBlocked: 0,
         registryNoAnswer: 0,
+        registryError: 0,
+        partialWalks: 0,
     };
     async onModuleDestroy() {
         await this.disposeBrowser();
@@ -160,20 +162,40 @@ let LicenseService = class LicenseService {
             const context = browser.contexts()[0];
             page = await context.newPage();
             const first = await this.captureTokenFromBrowser(page, tin, 1);
+            if (first.token && typeof first.searchStatus === "number") {
+                if (first.searchStatus === 403 || first.searchStatus === 429) {
+                    throw new Error(`Registry refused the search: HTTP ${first.searchStatus} — rate limit or block`);
+                }
+                this.stats.registryError++;
+                throw new Error(`Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows`);
+            }
             const all = [...first.certificates];
+            let failedPage = 0;
             if (first.certificates.length === LICENSE_PAGE_SIZE ||
                 (first.total !== null && first.total > all.length)) {
                 const context = page.context();
                 for (let pageNo = 2; pageNo <= MAX_LICENSE_PAGES; pageNo++) {
                     if (first.total !== null && all.length >= first.total)
                         break;
-                    const next = await this.fetchPage(context, tin, pageNo);
+                    let next = await this.fetchPage(context, tin, pageNo);
+                    if (next === null)
+                        next = await this.fetchPage(context, tin, pageNo);
+                    if (next === null) {
+                        failedPage = pageNo;
+                        break;
+                    }
                     if (next.length === 0)
                         break;
                     all.push(...next);
                     if (next.length < LICENSE_PAGE_SIZE)
                         break;
                 }
+            }
+            if (failedPage) {
+                this.stats.partialWalks++;
+                throw new Error(`Registry answered only part of the list: ${all.length}` +
+                    (first.total !== null ? ` of ${first.total}` : "") +
+                    ` — page ${failedPage} did not answer, even asked twice`);
             }
             if (all.length > 0) {
                 if (first.total !== null && all.length < first.total) {
@@ -183,7 +205,7 @@ let LicenseService = class LicenseService {
                 this.blockedUntil = 0;
                 this.recordOk(all.length, took());
                 this.logger.log(`✔ DONE TIN=${tin} — ${all.length} cert(s)` +
-                    (first.total !== null ? ` of ${first.total}` : '') +
+                    (first.total !== null ? ` of ${first.total}` : "") +
                     ` in ${took()}ms`);
                 return all;
             }
@@ -195,22 +217,22 @@ let LicenseService = class LicenseService {
                 return [];
             }
             if (!first.token) {
-                throw new Error('Turnstile token not obtained — the lookup never reached the registry');
+                throw new Error("Turnstile token not obtained — the lookup never reached the registry");
             }
             if (!first.answered) {
                 this.stats.registryNoAnswer++;
                 throw new Error(`Registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s — the challenge was solved; the registry is slow`);
             }
-            throw new Error('Registry answered without a count or any certificates — its response shape may have changed');
+            throw new Error("Registry answered without a count or any certificates — its response shape may have changed");
         }
         catch (err) {
             const alive = this.browser?.isConnected() ?? false;
             if (this.browser && !alive) {
-                this.logger.error('Chrome died mid-lookup — disposing so the next call respawns');
+                this.logger.error("Chrome died mid-lookup — disposing so the next call respawns");
                 await this.disposeBrowser();
             }
             const msg = err instanceof Error ? err.message : String(err);
-            if (/Turnstile/i.test(msg)) {
+            if (/Turnstile|Registry refused the search/i.test(msg)) {
                 this.turnstileStreak++;
                 if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
                     this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
@@ -292,23 +314,23 @@ let LicenseService = class LicenseService {
         if (!(await this.isCdpUp())) {
             const chromePath = this.findChromePath();
             if (!chromePath) {
-                throw new Error('Google Chrome not found. Install Chrome to proceed.');
+                throw new Error("Google Chrome not found. Install Chrome to proceed.");
             }
-            const userDataDir = path.join(os.tmpdir(), 'license-cdp-chrome');
+            const userDataDir = path.join(os.tmpdir(), "license-cdp-chrome");
             const chromeArgs = [
                 `--remote-debugging-port=${CDP_PORT}`,
                 `--user-data-dir=${userDataDir}`,
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--disable-popup-blocking',
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-popup-blocking",
             ];
             if (!IS_WINDOWS) {
-                chromeArgs.push('--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu');
+                chromeArgs.push("--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu");
             }
-            chromeArgs.push('about:blank');
+            chromeArgs.push("about:blank");
             this.chromeProc = (0, child_process_1.spawn)(chromePath, chromeArgs, {
                 detached: true,
-                stdio: 'ignore',
+                stdio: "ignore",
             });
             this.chromeProc.unref();
             this.stats.chromeSpawns++;
@@ -316,10 +338,10 @@ let LicenseService = class LicenseService {
             await this.waitForCdpReady();
         }
         else {
-            this.logger.log('reusing Chrome already listening on CDP');
+            this.logger.log("reusing Chrome already listening on CDP");
         }
         this.browser = await playwright_1.chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
-        this.logger.log('connected to Chrome (kept alive between lookups)');
+        this.logger.log("connected to Chrome (kept alive between lookups)");
         return this.browser;
     }
     async isCdpUp() {
@@ -350,11 +372,11 @@ let LicenseService = class LicenseService {
             clearTimeout(this.idleTimer);
         this.idleTimer = setTimeout(() => {
             if (this.busy) {
-                this.logger.debug('idle timer fired mid-lookup — deferring');
+                this.logger.debug("idle timer fired mid-lookup — deferring");
                 this.scheduleIdleShutdown();
                 return;
             }
-            this.logger.log('idle — closing Chrome to release memory');
+            this.logger.log("idle — closing Chrome to release memory");
             void this.disposeBrowser();
         }, BROWSER_IDLE_MS);
         this.idleTimer.unref?.();
@@ -364,10 +386,10 @@ let LicenseService = class LicenseService {
             return;
         try {
             if (IS_WINDOWS) {
-                (0, child_process_1.execSync)(`taskkill /F /PID ${proc.pid} /T`, { stdio: 'ignore' });
+                (0, child_process_1.execSync)(`taskkill /F /PID ${proc.pid} /T`, { stdio: "ignore" });
             }
             else {
-                (0, child_process_1.execSync)(`kill -9 ${proc.pid}`, { stdio: 'ignore' });
+                (0, child_process_1.execSync)(`kill -9 ${proc.pid}`, { stdio: "ignore" });
             }
             this.logger.log(`Chrome process ${proc.pid} killed`);
         }
@@ -378,13 +400,19 @@ let LicenseService = class LicenseService {
         const certs = [];
         try {
             const answered = tab
-                .waitForResponse((r) => r.url().includes('open_source?tin=') && r.status() === 200, { timeout: PAGE_RESPONSE_TIMEOUT_MS })
+                .waitForResponse((r) => r.url().includes("open_source?tin="), {
+                timeout: PAGE_RESPONSE_TIMEOUT_MS,
+            })
                 .catch(() => null);
-            await tab.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await tab.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
             const resp = await answered;
             if (!resp) {
                 this.logger.warn(`TIN=${tin} page ${pageNo} — no registry response`);
-                return certs;
+                return null;
+            }
+            if (resp.status() !== 200) {
+                this.logger.warn(`TIN=${tin} page ${pageNo} — registry answered HTTP ${resp.status()}`);
+                return null;
             }
             const body = await resp.json().catch(() => null);
             const list = body?.data?.certificates;
@@ -404,33 +432,42 @@ let LicenseService = class LicenseService {
         let reportedTotal = null;
         let searchParsed = Promise.resolve();
         let searchSeenAt = 0;
+        let searchStatus = null;
         let resolveSearch = () => undefined;
         const searchAnswered = new Promise((resolve) => {
             resolveSearch = resolve;
         });
-        page.on('response', async (resp) => {
+        page.on("response", async (resp) => {
             try {
                 const url = resp.url();
-                if (!url.includes('api.licenses.uz'))
+                if (!url.includes("api.licenses.uz"))
                     return;
                 const status = resp.status();
-                const token = resp.request().headers()['x-turnstile-token'];
+                const token = resp.request().headers()["x-turnstile-token"];
                 const key = String(status);
                 this.stats.apiStatus[key] = (this.stats.apiStatus[key] ?? 0) + 1;
                 if (status === 429 || status === 403) {
-                    this.logger.error(`⚠ REGISTRY REFUSED: HTTP ${status} on ${url.split('?')[0]} — rate limit or block`);
+                    this.logger.error(`⚠ REGISTRY REFUSED: HTTP ${status} on ${url.split("?")[0]} — rate limit or block`);
                 }
                 else if (status >= 400) {
-                    this.logger.warn(`registry HTTP ${status} on ${url.split('?')[0]}`);
+                    this.logger.warn(`registry HTTP ${status} on ${url.split("?")[0]}`);
                 }
                 if (token && !capturedToken) {
                     capturedToken = token;
-                    this.logger.log('Turnstile token captured');
+                    this.logger.log("Turnstile token captured");
                 }
-                if (url.includes('open_source')) {
+                if (url.includes("open_source")) {
                     this.logger.debug(`registry request: ${url}`);
                 }
-                if (url.includes('open_source') && status === 200) {
+                if (url.includes("open_source") && status !== 200 && token) {
+                    if (!searchSeenAt) {
+                        searchStatus = status;
+                        searchSeenAt = Date.now();
+                        resolveSearch();
+                    }
+                    return;
+                }
+                if (url.includes("open_source") && status === 200) {
                     const parsed = (async () => {
                         const body = await resp.json().catch(() => null);
                         if (!body)
@@ -445,7 +482,7 @@ let LicenseService = class LicenseService {
                             body?.data?.total_items ??
                             body?.data?.total ??
                             body?.data?.totalCount;
-                        if (typeof t === 'number')
+                        if (typeof t === "number")
                             reportedTotal = t;
                         const uuids = this.extractUuids(body);
                         for (const id of uuids)
@@ -469,7 +506,7 @@ let LicenseService = class LicenseService {
         });
         this.logger.log(`navigating to registry for TIN=${tin} (page ${pageNo})`);
         const navAt = Date.now();
-        await page.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto(`${SITE_URL}/registry?filter[tin]=${encodeURIComponent(tin)}&page=${pageNo}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
         this.logger.log(`page loaded in ${Date.now() - navAt}ms`);
         const solveAt = Date.now();
         const turnstileToken = await this.extractTurnstileToken(page);
@@ -498,7 +535,8 @@ let LicenseService = class LicenseService {
         }
         if (answered) {
             await searchParsed.catch(() => undefined);
-            this.logger.log(`registry answered the search ${searchSeenAt - navAt}ms after navigation`);
+            this.logger.log(`registry answered the search ${searchSeenAt - navAt}ms after navigation` +
+                (searchStatus !== null ? ` — with HTTP ${searchStatus}` : ""));
         }
         else if (turnstileToken || capturedToken) {
             this.logger.warn(`registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s of the challenge`);
@@ -511,6 +549,7 @@ let LicenseService = class LicenseService {
                 certificates: collectedCertificates,
                 total: reportedTotal,
                 answered,
+                searchStatus,
             };
         }
         try {
@@ -522,7 +561,7 @@ let LicenseService = class LicenseService {
             await this.clickFirstResult(page, tin);
             const detailResp = await detailPromise;
             if (detailResp) {
-                const tkn = detailResp.request().headers()['x-turnstile-token'];
+                const tkn = detailResp.request().headers()["x-turnstile-token"];
                 if (tkn) {
                     const urlUuids = detailResp.url().match(UUID_RE);
                     if (urlUuids)
@@ -534,6 +573,7 @@ let LicenseService = class LicenseService {
                         certificates: collectedCertificates,
                         total: reportedTotal,
                         answered: true,
+                        searchStatus: null,
                     };
                 }
             }
@@ -541,11 +581,11 @@ let LicenseService = class LicenseService {
         catch (err) {
             this.logger.warn(`fallback click failed: ${err}`);
         }
-        throw new Error('Could not obtain Turnstile token — Turnstile did not solve');
+        throw new Error("Could not obtain Turnstile token — Turnstile did not solve");
     }
     async extractTurnstileToken(page) {
         const hasTurnstile = await page.evaluate(() => ({
-            cfWidget: !!document.querySelector('.cf-turnstile'),
+            cfWidget: !!document.querySelector(".cf-turnstile"),
             cfIframe: !!document.querySelector('iframe[src*="turnstile"]'),
         }));
         if (hasTurnstile.cfWidget || hasTurnstile.cfIframe) {
@@ -558,7 +598,7 @@ let LicenseService = class LicenseService {
             }
             catch {
                 try {
-                    await page.locator('.cf-turnstile').first().click({ timeout: 2000 });
+                    await page.locator(".cf-turnstile").first().click({ timeout: 2000 });
                 }
                 catch { }
             }
@@ -567,9 +607,9 @@ let LicenseService = class LicenseService {
             const handle = await page.waitForFunction(() => {
                 try {
                     const t = window.turnstile;
-                    if (t && typeof t.getResponse === 'function') {
+                    if (t && typeof t.getResponse === "function") {
                         const r = t.getResponse();
-                        if (r && typeof r === 'string' && r.length > 20)
+                        if (r && typeof r === "string" && r.length > 20)
                             return r;
                     }
                 }
@@ -577,10 +617,10 @@ let LicenseService = class LicenseService {
                 const input = document.querySelector('[name="cf-turnstile-response"]');
                 if (input?.value && input.value.length > 20)
                     return input.value;
-                const widget = document.querySelector('.cf-turnstile');
+                const widget = document.querySelector(".cf-turnstile");
                 if (widget) {
-                    const val = widget.getAttribute('data-response') ||
-                        widget.getAttribute('data-token');
+                    const val = widget.getAttribute("data-response") ||
+                        widget.getAttribute("data-token");
                     if (val && val.length > 20)
                         return val;
                 }
@@ -594,13 +634,13 @@ let LicenseService = class LicenseService {
     }
     isTokenBearingResponse(resp) {
         const url = resp.url();
-        if (!url.includes('api.licenses.uz'))
+        if (!url.includes("api.licenses.uz"))
             return false;
-        if (!url.includes('open_source'))
+        if (!url.includes("open_source"))
             return false;
         if (resp.status() !== 200)
             return false;
-        return !!resp.request().headers()['x-turnstile-token'];
+        return !!resp.request().headers()["x-turnstile-token"];
     }
     async clickFirstResult(page, _tin) {
         const chipBox = await page
@@ -609,21 +649,21 @@ let LicenseService = class LicenseService {
             .boundingBox()
             .catch(() => null);
         const minY = chipBox ? chipBox.y + chipBox.height + 50 : 380;
-        const allLinks = await page.locator('a:visible').all();
+        const allLinks = await page.locator("a:visible").all();
         for (let i = 0; i < allLinks.length; i++) {
             const link = allLinks[i];
             const box = await link.boundingBox().catch(() => null);
-            const text = ((await link.textContent()) || '').trim().slice(0, 60);
+            const text = ((await link.textContent()) || "").trim().slice(0, 60);
             if (!box)
                 continue;
             if (box.y < minY || box.width < 20 || box.height < 10)
                 continue;
-            if (text === 'Barcha' || text.startsWith('STIR'))
+            if (text === "Barcha" || text.startsWith("STIR"))
                 continue;
             await link.click();
             return;
         }
-        for (const label of ['License', 'Litsenziya', 'Ruxsatnoma']) {
+        for (const label of ["License", "Litsenziya", "Ruxsatnoma"]) {
             const el = page.getByText(label).first();
             const vis = await el.isVisible().catch(() => false);
             if (vis) {
@@ -635,12 +675,12 @@ let LicenseService = class LicenseService {
             }
         }
         const clickInfo = await page.evaluate((minY) => {
-            const els = document.querySelectorAll('div, span, td, tr, li, article');
+            const els = document.querySelectorAll("div, span, td, tr, li, article");
             for (const el of els) {
                 const rect = el.getBoundingClientRect();
                 if (rect.top < minY || rect.width < 50 || rect.height < 20)
                     continue;
-                if (window.getComputedStyle(el).cursor === 'pointer') {
+                if (window.getComputedStyle(el).cursor === "pointer") {
                     el.click();
                     return true;
                 }
@@ -656,7 +696,7 @@ let LicenseService = class LicenseService {
         }
     }
     extractUuids(body) {
-        if (!body || typeof body !== 'object')
+        if (!body || typeof body !== "object")
             return [];
         const obj = body;
         let items = [];
@@ -671,17 +711,17 @@ let LicenseService = class LicenseService {
         else if (Array.isArray(obj?.data)) {
             items = obj.data;
         }
-        else if (obj?.data && typeof obj.data === 'object') {
+        else if (obj?.data && typeof obj.data === "object") {
             const values = Object.values(obj.data);
             if (values.length > 0 &&
-                values.every((v) => v && typeof v === 'object')) {
+                values.every((v) => v && typeof v === "object")) {
                 items = values;
             }
         }
         const uuids = [];
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         for (const item of items) {
-            if (!item || typeof item !== 'object')
+            if (!item || typeof item !== "object")
                 continue;
             const it = item;
             const id = it.uuid ??
@@ -691,7 +731,7 @@ let LicenseService = class LicenseService {
                 it.certificateId ??
                 it.certificate_id ??
                 it.docId;
-            if (id && typeof id === 'string' && uuidPattern.test(id)) {
+            if (id && typeof id === "string" && uuidPattern.test(id)) {
                 uuids.push(id);
             }
         }
@@ -708,11 +748,11 @@ let LicenseService = class LicenseService {
     }
     buildApiHeaders(token) {
         return {
-            Accept: 'application/json',
+            Accept: "application/json",
             Origin: SITE_URL,
             Referer: `${SITE_URL}/`,
-            'User-Agent': DEFAULT_USER_AGENT,
-            'x-turnstile-token': token,
+            "User-Agent": DEFAULT_USER_AGENT,
+            "x-turnstile-token": token,
         };
     }
     async fetchLicenseCertificates(tin, token) {
@@ -731,7 +771,7 @@ let LicenseService = class LicenseService {
                 break;
             all.push(...certs);
             const total = body?.total_items ?? body?.total ?? body?.totalCount;
-            if (typeof total === 'number')
+            if (typeof total === "number")
                 reportedTotal = total;
             if (certs.length < LICENSE_PAGE_SIZE)
                 break;

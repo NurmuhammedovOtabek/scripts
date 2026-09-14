@@ -1,6 +1,6 @@
-import { ServiceUnavailableException } from '@nestjs/common';
-import { LicenseService } from './license.service';
-import { redact, stripAnsi } from '../common/log-file';
+import { ServiceUnavailableException } from "@nestjs/common";
+import { LicenseService } from "./license.service";
+import { redact, stripAnsi } from "../common/log-file";
 
 /**
  * The backoff, without a browser.
@@ -11,15 +11,15 @@ import { redact, stripAnsi } from '../common/log-file';
  * decided it is being refused — answer immediately and locally, and stop
  * spending challenges.
  */
-describe('LicenseService — challenge backoff', () => {
+describe("LicenseService — challenge backoff", () => {
   const build = () => new LicenseService();
 
-  it('refuses immediately while blocked, without driving the browser', async () => {
+  it("refuses immediately while blocked, without driving the browser", async () => {
     const svc = build() as any;
     svc.blockedUntil = Date.now() + 60_000;
 
     const started = Date.now();
-    await expect(svc.getLicensesByTin('302114274')).rejects.toBeInstanceOf(
+    await expect(svc.getLicensesByTin("302114274")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
 
@@ -29,11 +29,11 @@ describe('LicenseService — challenge backoff', () => {
     expect(svc.browser).toBeNull();
   });
 
-  it('says how long is left, so the caller can wait rather than hammer', async () => {
+  it("says how long is left, so the caller can wait rather than hammer", async () => {
     const svc = build() as any;
     svc.blockedUntil = Date.now() + 45_000;
 
-    const err = await svc.getLicensesByTin('302114274').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("302114274").catch((e: any) => e);
     const body = err.getResponse();
 
     expect(body.retryAfterSec).toBeGreaterThan(40);
@@ -41,12 +41,12 @@ describe('LicenseService — challenge backoff', () => {
     expect(body.blockedUntil).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('counts a refusal against the caller so the backoff is visible in stats', async () => {
+  it("counts a refusal against the caller so the backoff is visible in stats", async () => {
     const svc = build() as any;
     svc.blockedUntil = Date.now() + 60_000;
 
-    await svc.getLicensesByTin('1').catch(() => undefined);
-    await svc.getLicensesByTin('2').catch(() => undefined);
+    await svc.getLicensesByTin("1").catch(() => undefined);
+    await svc.getLicensesByTin("2").catch(() => undefined);
 
     // Rising while `failed` holds steady is what tells an operator the box is
     // deliberately sitting out rather than failing lookups.
@@ -54,7 +54,7 @@ describe('LicenseService — challenge backoff', () => {
     expect(svc.getStats().failed).toBe(0);
   });
 
-  it('lets lookups through once the block has expired', async () => {
+  it("lets lookups through once the block has expired", async () => {
     const svc = build() as any;
     svc.blockedUntil = Date.now() - 1;
 
@@ -63,9 +63,9 @@ describe('LicenseService — challenge backoff', () => {
     // matters here is only that the guard stepped aside.
     svc.ensureBrowser = jest
       .fn()
-      .mockRejectedValue(new Error('no browser here'));
+      .mockRejectedValue(new Error("no browser here"));
 
-    const err = await svc.getLicensesByTin('302114274').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("302114274").catch((e: any) => e);
 
     expect(err).not.toBeInstanceOf(ServiceUnavailableException);
     expect(svc.ensureBrowser).toHaveBeenCalled();
@@ -73,7 +73,7 @@ describe('LicenseService — challenge backoff', () => {
   });
 });
 
-describe('LicenseService — entering the backoff', () => {
+describe("LicenseService — entering the backoff", () => {
   /**
    * Drives the real failure path rather than setting `blockedUntil` by hand.
    *
@@ -88,8 +88,8 @@ describe('LicenseService — entering the backoff', () => {
     return svc;
   };
 
-  it('arms the backoff after three refusals in a row', async () => {
-    const svc = failing('Turnstile token not obtained');
+  it("arms the backoff after three refusals in a row", async () => {
+    const svc = failing("Turnstile token not obtained");
 
     for (let i = 0; i < 3; i++) {
       await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
@@ -99,25 +99,25 @@ describe('LicenseService — entering the backoff', () => {
     expect(svc.turnstileStreak).toBe(3);
   });
 
-  it('does not arm it before the third', async () => {
-    const svc = failing('Turnstile token not obtained');
+  it("does not arm it before the third", async () => {
+    const svc = failing("Turnstile token not obtained");
 
-    await svc.getLicensesByTin('300000001').catch(() => undefined);
-    await svc.getLicensesByTin('300000002').catch(() => undefined);
+    await svc.getLicensesByTin("300000001").catch(() => undefined);
+    await svc.getLicensesByTin("300000002").catch(() => undefined);
 
     // Two is bad luck; a browser respawn every time one lookup goes wrong
     // would cost more than it saves.
     expect(svc.blockedUntil).toBe(0);
   });
 
-  it('refuses the next caller once armed, instead of asking again', async () => {
-    const svc = failing('Turnstile token not obtained');
+  it("refuses the next caller once armed, instead of asking again", async () => {
+    const svc = failing("Turnstile token not obtained");
     for (let i = 0; i < 3; i++) {
       await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
     }
     const attemptsBefore = svc.ensureBrowser.mock.calls.length;
 
-    const err = await svc.getLicensesByTin('300000009').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("300000009").catch((e: any) => e);
 
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     // The whole point: no further challenge is spent while the far side is
@@ -126,9 +126,9 @@ describe('LicenseService — entering the backoff', () => {
     expect(svc.getStats().turnstileBlocked).toBe(1);
   });
 
-  it('ignores failures that are not the challenge', async () => {
+  it("ignores failures that are not the challenge", async () => {
     // Chrome dying says nothing about whether the registry will talk to us.
-    const svc = failing('Chrome died mid-lookup');
+    const svc = failing("Chrome died mid-lookup");
 
     for (let i = 0; i < 5; i++) {
       await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
@@ -139,35 +139,35 @@ describe('LicenseService — entering the backoff', () => {
   });
 });
 
-describe('log redaction', () => {
-  it('masks a PINFL but leaves a company TIN readable', () => {
+describe("log redaction", () => {
+  it("masks a PINFL but leaves a company TIN readable", () => {
     // mib logs both through the same `INN=` line, so only length tells them
     // apart: fourteen digits is a person, nine is a company.
-    const line = 'Form yuborilmoqda: INN=32003746860016, code=4';
+    const line = "Form yuborilmoqda: INN=32003746860016, code=4";
 
-    expect(redact(line)).toBe('Form yuborilmoqda: INN=[pinfl], code=4');
-    expect(redact('TIN=302114274 — 6 cert(s)')).toBe(
-      'TIN=302114274 — 6 cert(s)',
+    expect(redact(line)).toBe("Form yuborilmoqda: INN=[pinfl], code=4");
+    expect(redact("TIN=302114274 — 6 cert(s)")).toBe(
+      "TIN=302114274 — 6 cert(s)",
     );
   });
 
-  it('masks every PINFL on a line, not just the first', () => {
-    expect(redact('a=32003746860016 b=45010119900022')).toBe(
-      'a=[pinfl] b=[pinfl]',
+  it("masks every PINFL on a line, not just the first", () => {
+    expect(redact("a=32003746860016 b=45010119900022")).toBe(
+      "a=[pinfl] b=[pinfl]",
     );
   });
 
-  it('strips the colour codes Nest writes for a terminal', () => {
+  it("strips the colour codes Nest writes for a terminal", () => {
     const esc = String.fromCharCode(27);
-    expect(stripAnsi(`${esc}[32m[Nest]${esc}[39m ready`)).toBe('[Nest] ready');
+    expect(stripAnsi(`${esc}[32m[Nest]${esc}[39m ready`)).toBe("[Nest] ready");
   });
 });
 
-describe('LicenseService — idle shutdown', () => {
+describe("LicenseService — idle shutdown", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('does not close the browser while a lookup is running', async () => {
+  it("does not close the browser while a lookup is running", async () => {
     // What happened on 25 Aug: the countdown from one lookup elapsed during
     // the next one, Chrome went away underneath it, and the failure was
     // reported as the registry refusing us.
@@ -181,7 +181,7 @@ describe('LicenseService — idle shutdown', () => {
     expect(svc.disposeBrowser).not.toHaveBeenCalled();
   });
 
-  it('closes it once nothing is running', async () => {
+  it("closes it once nothing is running", async () => {
     const svc = new LicenseService() as any;
     svc.disposeBrowser = jest.fn().mockResolvedValue(undefined);
 
@@ -192,7 +192,7 @@ describe('LicenseService — idle shutdown', () => {
     expect(svc.disposeBrowser).toHaveBeenCalled();
   });
 
-  it('closes it on the next round once the lookup ends', async () => {
+  it("closes it on the next round once the lookup ends", async () => {
     // Deferring must not mean never: the memory is worth reclaiming.
     const svc = new LicenseService() as any;
     svc.disposeBrowser = jest.fn().mockResolvedValue(undefined);
@@ -208,7 +208,7 @@ describe('LicenseService — idle shutdown', () => {
   });
 });
 
-describe('LicenseService — the real refusal path', () => {
+describe("LicenseService — the real refusal path", () => {
   /**
    * Drives the path production actually takes: the browser works, the page
    * loads, and the challenge yields no token.
@@ -222,17 +222,26 @@ describe('LicenseService — the real refusal path', () => {
   const refusing = () => {
     const svc = new LicenseService() as any;
     svc.ensureBrowser = jest.fn().mockResolvedValue({
-      contexts: () => [{ newPage: async () => ({ close: async () => {}, context: () => ({}) }) }],
+      contexts: () => [
+        {
+          newPage: async () => ({ close: async () => {}, context: () => ({}) }),
+        },
+      ],
       isConnected: () => true,
     });
     // No certificates and no token — the shape of a refused challenge.
     svc.captureTokenFromBrowser = jest
       .fn()
-      .mockResolvedValue({ token: '', uuids: [], certificates: [], total: null });
+      .mockResolvedValue({
+        token: "",
+        uuids: [],
+        certificates: [],
+        total: null,
+      });
     return svc;
   };
 
-  it('arms the backoff after three refusals that reached the browser', async () => {
+  it("arms the backoff after three refusals that reached the browser", async () => {
     const svc = refusing();
 
     for (let i = 0; i < 3; i++) {
@@ -243,39 +252,39 @@ describe('LicenseService — the real refusal path', () => {
     expect(svc.blockedUntil).toBeGreaterThan(Date.now());
   });
 
-  it('refuses the fourth caller without opening a browser', async () => {
+  it("refuses the fourth caller without opening a browser", async () => {
     const svc = refusing();
     for (let i = 0; i < 3; i++) {
       await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
     }
     const opened = svc.ensureBrowser.mock.calls.length;
 
-    const err = await svc.getLicensesByTin('300000009').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("300000009").catch((e: any) => e);
 
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(svc.ensureBrowser.mock.calls.length).toBe(opened);
   });
 
-  it('a success clears the count, so an isolated refusal never accumulates', async () => {
+  it("a success clears the count, so an isolated refusal never accumulates", async () => {
     const svc = refusing();
-    await svc.getLicensesByTin('300000001').catch(() => undefined);
-    await svc.getLicensesByTin('300000002').catch(() => undefined);
+    await svc.getLicensesByTin("300000001").catch(() => undefined);
+    await svc.getLicensesByTin("300000002").catch(() => undefined);
     expect(svc.turnstileStreak).toBe(2);
 
     svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
-      token: 't',
+      token: "t",
       uuids: [],
       certificates: [{ id: 1 }],
       total: 1,
     });
-    await svc.getLicensesByTin('300000003');
+    await svc.getLicensesByTin("300000003");
 
     expect(svc.turnstileStreak).toBe(0);
     expect(svc.blockedUntil).toBe(0);
   });
 });
 
-describe('LicenseService — a company with no permits', () => {
+describe("LicenseService — a company with no permits", () => {
   /**
    * The registry answers 200 with `{certificates: [], totalItems: 0}`.
    *
@@ -288,12 +297,14 @@ describe('LicenseService — a company with no permits', () => {
     const svc = new LicenseService() as any;
     svc.ensureBrowser = jest.fn().mockResolvedValue({
       contexts: () => [
-        { newPage: async () => ({ close: async () => {}, context: () => ({}) }) },
+        {
+          newPage: async () => ({ close: async () => {}, context: () => ({}) }),
+        },
       ],
       isConnected: () => true,
     });
     svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
-      token: 'a-real-token',
+      token: "a-real-token",
       uuids: [],
       certificates: [],
       total: 0,
@@ -301,13 +312,13 @@ describe('LicenseService — a company with no permits', () => {
     return svc;
   };
 
-  it('answers with an empty list rather than throwing', async () => {
+  it("answers with an empty list rather than throwing", async () => {
     const svc = holdingNone();
 
-    await expect(svc.getLicensesByTin('302245864')).resolves.toEqual([]);
+    await expect(svc.getLicensesByTin("302245864")).resolves.toEqual([]);
   });
 
-  it('does not count towards the refusal backoff', async () => {
+  it("does not count towards the refusal backoff", async () => {
     // Three such companies in a row used to look identical to three refusals,
     // which would now pause the whole queue for ten minutes over nothing.
     const svc = holdingNone();
@@ -320,10 +331,10 @@ describe('LicenseService — a company with no permits', () => {
     expect(svc.blockedUntil).toBe(0);
   });
 
-  it('records it as a success, counted as an empty result', async () => {
+  it("records it as a success, counted as an empty result", async () => {
     const svc = holdingNone();
 
-    await svc.getLicensesByTin('302245864');
+    await svc.getLicensesByTin("302245864");
     const s = svc.getStats();
 
     expect(s.ok).toBe(1);
@@ -331,19 +342,24 @@ describe('LicenseService — a company with no permits', () => {
     expect(s.emptyResult).toBe(1);
   });
 
-  it('still throws when the challenge never produced a token', async () => {
+  it("still throws when the challenge never produced a token", async () => {
     // The distinction the whole fix rests on: no token means we never asked.
     const svc = holdingNone();
     svc.captureTokenFromBrowser = jest
       .fn()
-      .mockResolvedValue({ token: '', uuids: [], certificates: [], total: null });
+      .mockResolvedValue({
+        token: "",
+        uuids: [],
+        certificates: [],
+        total: null,
+      });
 
-    await expect(svc.getLicensesByTin('300438878')).rejects.toThrow();
+    await expect(svc.getLicensesByTin("300438878")).rejects.toThrow();
     expect(svc.turnstileStreak).toBe(1);
   });
 });
 
-describe('LicenseService — a registry that is slow to answer', () => {
+describe("LicenseService — a registry that is slow to answer", () => {
   /**
    * The challenge is solved and the search goes out with its token, but the
    * registry answers later than the page waits.
@@ -358,12 +374,14 @@ describe('LicenseService — a registry that is slow to answer', () => {
     const svc = new LicenseService() as any;
     svc.ensureBrowser = jest.fn().mockResolvedValue({
       contexts: () => [
-        { newPage: async () => ({ close: async () => {}, context: () => ({}) }) },
+        {
+          newPage: async () => ({ close: async () => {}, context: () => ({}) }),
+        },
       ],
       isConnected: () => true,
     });
     svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
-      token: 'a-real-token',
+      token: "a-real-token",
       uuids: [],
       certificates: [],
       total: null,
@@ -372,23 +390,23 @@ describe('LicenseService — a registry that is slow to answer', () => {
     return svc;
   };
 
-  it('fails the lookup rather than reporting no permits', async () => {
+  it("fails the lookup rather than reporting no permits", async () => {
     const svc = slowRegistry(false);
 
-    await expect(svc.getLicensesByTin('311142996')).rejects.toThrow(
+    await expect(svc.getLicensesByTin("311142996")).rejects.toThrow(
       /did not answer/,
     );
   });
 
-  it('does not call it a Turnstile failure', async () => {
+  it("does not call it a Turnstile failure", async () => {
     const svc = slowRegistry(false);
 
-    const err = await svc.getLicensesByTin('311142996').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("311142996").catch((e: any) => e);
 
     expect(String(err.message)).not.toMatch(/Turnstile/i);
   });
 
-  it('does not arm the backoff, however many come in a row', async () => {
+  it("does not arm the backoff, however many come in a row", async () => {
     const svc = slowRegistry(false);
 
     for (let i = 0; i < 5; i++) {
@@ -399,11 +417,11 @@ describe('LicenseService — a registry that is slow to answer', () => {
     expect(svc.blockedUntil).toBe(0);
   });
 
-  it('counts it apart, so an operator can tell slow from refused', async () => {
+  it("counts it apart, so an operator can tell slow from refused", async () => {
     const svc = slowRegistry(false);
 
-    await svc.getLicensesByTin('300000001').catch(() => undefined);
-    await svc.getLicensesByTin('300000002').catch(() => undefined);
+    await svc.getLicensesByTin("300000001").catch(() => undefined);
+    await svc.getLicensesByTin("300000002").catch(() => undefined);
     const s = svc.getStats();
 
     expect(s.registryNoAnswer).toBe(2);
@@ -411,14 +429,150 @@ describe('LicenseService — a registry that is slow to answer', () => {
     expect(s.turnstileBlocked).toBe(0);
   });
 
-  it('an answer with no count and nothing in it fails too — but is not a refusal', async () => {
+  it("an answer with no count and nothing in it fails too — but is not a refusal", async () => {
     const svc = slowRegistry(true);
 
-    const err = await svc.getLicensesByTin('311142996').catch((e: any) => e);
+    const err = await svc.getLicensesByTin("311142996").catch((e: any) => e);
 
     expect(err).toBeInstanceOf(Error);
     expect(String(err.message)).not.toMatch(/Turnstile/i);
     expect(svc.turnstileStreak).toBe(0);
     expect(svc.getStats().registryNoAnswer).toBe(0);
+  });
+});
+
+describe("LicenseService — a registry that answers the search with an error", () => {
+  /**
+   * The challenge is solved, the search goes out with its token, and the
+   * registry's own server gives up on it: HTTP 500 thirty seconds in, measured
+   * 14 Sep in a slow spell, while the searches either side answered 200.
+   */
+  const failingRegistry = (searchStatus: number) => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockResolvedValue({
+      contexts: () => [
+        {
+          newPage: async () => ({ close: async () => {}, context: () => ({}) }),
+        },
+      ],
+      isConnected: () => true,
+    });
+    svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
+      token: "a-real-token",
+      uuids: [],
+      certificates: [],
+      total: null,
+      answered: true,
+      searchStatus,
+    });
+    return svc;
+  };
+
+  it("fails the lookup with the status the registry gave", async () => {
+    const svc = failingRegistry(500);
+
+    const err = await svc.getLicensesByTin("311142996").catch((e: any) => e);
+
+    expect(String(err.message)).toMatch(/answered the search with HTTP 500/);
+    expect(String(err.message)).not.toMatch(/did not answer/);
+  });
+
+  it("does not call it a Turnstile failure, or arm the backoff", async () => {
+    const svc = failingRegistry(500);
+
+    for (let i = 0; i < 5; i++) {
+      const err = await svc
+        .getLicensesByTin(`30000000${i}`)
+        .catch((e: any) => e);
+      expect(String(err.message)).not.toMatch(/Turnstile/i);
+    }
+
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.blockedUntil).toBe(0);
+  });
+
+  it("counts it apart from a registry that never answered", async () => {
+    const svc = failingRegistry(502);
+
+    await svc.getLicensesByTin("300000001").catch(() => undefined);
+    const s = svc.getStats();
+
+    expect(s.registryError).toBe(1);
+    expect(s.registryNoAnswer).toBe(0);
+    expect(s.failed).toBe(1);
+  });
+
+  it("treats a 429 as a refusal and backs off after three", async () => {
+    const svc = failingRegistry(429);
+
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.blockedUntil).toBeGreaterThan(Date.now());
+    expect(svc.getStats().registryError).toBe(0);
+  });
+});
+
+describe("LicenseService — a walk a page would not finish", () => {
+  const certs = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => ({ uuid: `u-${from + i}` }));
+
+  /** First page: 10 of `total`. Then one entry per fetchPage call, in order. */
+  const walk = (pages: Array<any[] | null>, total = 39) => {
+    const svc = new LicenseService() as any;
+    svc.ensureBrowser = jest.fn().mockResolvedValue({
+      contexts: () => [
+        {
+          newPage: async () => ({ close: async () => {}, context: () => ({}) }),
+        },
+      ],
+      isConnected: () => true,
+    });
+    svc.captureTokenFromBrowser = jest.fn().mockResolvedValue({
+      token: "a-real-token",
+      uuids: [],
+      certificates: certs(0, 10),
+      total,
+      answered: true,
+      searchStatus: null,
+    });
+    svc.fetchPage = jest.fn();
+    for (const p of pages) svc.fetchPage.mockResolvedValueOnce(p);
+    return svc;
+  };
+
+  it("asks a page that did not answer once more, and finishes the walk", async () => {
+    // Pages 2, 3 (after one miss) and 4: 10 + 10 + 10 + 9.
+    const svc = walk([certs(10, 10), null, certs(20, 10), certs(30, 9)]);
+
+    const result = await svc.getLicensesByTin("302699236");
+
+    expect(result).toHaveLength(39);
+    expect(svc.fetchPage).toHaveBeenCalledTimes(4);
+    expect(svc.getStats().partialWalks).toBe(0);
+  });
+
+  it("fails rather than hand over part of the list as the whole of it", async () => {
+    // 14 Sep: 30 of 39 came back 200 and would have been stored as complete.
+    const svc = walk([certs(10, 10), certs(20, 10), null, null]);
+
+    const err = await svc.getLicensesByTin("302699236").catch((e: any) => e);
+
+    expect(String(err.message)).toMatch(/only part of the list: 30 of 39/);
+    expect(String(err.message)).not.toMatch(/Turnstile/i);
+    expect(svc.getStats().partialWalks).toBe(1);
+    expect(svc.turnstileStreak).toBe(0);
+  });
+
+  it("still returns a walk whose pages simply ran out", async () => {
+    // A count that disagrees with pages that all answered is the registry's
+    // own inconsistency, not a failed page — returned with a warning, as before.
+    const svc = walk([certs(10, 10), certs(20, 5)]);
+
+    const result = await svc.getLicensesByTin("302699236");
+
+    expect(result).toHaveLength(25);
+    expect(svc.getStats().partialWalks).toBe(0);
   });
 });
