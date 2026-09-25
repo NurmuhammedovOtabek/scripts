@@ -1,4 +1,5 @@
 import { type OnModuleDestroy } from "@nestjs/common";
+export declare function excerptBody(text: string, max?: number): string;
 type LicenseDetail = any;
 export interface LicenseStats {
     startedAt: string;
@@ -19,6 +20,7 @@ export interface LicenseStats {
     turnstileBlocked: number;
     registryNoAnswer: number;
     registryError: number;
+    registryRejected: number;
     partialWalks: number;
 }
 export declare class LicenseService implements OnModuleDestroy {

@@ -43,6 +43,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LicenseService = void 0;
+exports.excerptBody = excerptBody;
 const common_1 = require("@nestjs/common");
 const axios_1 = __importDefault(require("axios"));
 const child_process_1 = require("child_process");
@@ -59,6 +60,12 @@ const AXIOS_TIMEOUT_MS = 15_000;
 const LICENSE_PAGE_SIZE = 10;
 const MAX_LICENSE_PAGES = 200;
 const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
+const REGISTRY_SAID = " — registry said: ";
+function excerptBody(text, max = 300) {
+    const title = /<title[^>]*>([^<]*)<\/title>/i.exec(text)?.[1];
+    const flat = (title ?? text).replace(/\s+/g, " ").trim();
+    return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
 const TURNSTILE_STREAK_BEFORE_BACKOFF = parseInt(process.env.TURNSTILE_STREAK ?? "3", 10);
 const TURNSTILE_COOLDOWN_MS = parseInt(process.env.TURNSTILE_COOLDOWN_MS ?? String(10 * 60 * 1000), 10);
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -109,6 +116,7 @@ let LicenseService = class LicenseService {
         turnstileBlocked: 0,
         registryNoAnswer: 0,
         registryError: 0,
+        registryRejected: 0,
         partialWalks: 0,
     };
     async onModuleDestroy() {
@@ -163,11 +171,18 @@ let LicenseService = class LicenseService {
             page = await context.newPage();
             const first = await this.captureTokenFromBrowser(page, tin, 1);
             if (first.token && typeof first.searchStatus === "number") {
+                const said = first.searchBody
+                    ? `${REGISTRY_SAID}${first.searchBody}`
+                    : "";
                 if (first.searchStatus === 403 || first.searchStatus === 429) {
-                    throw new Error(`Registry refused the search: HTTP ${first.searchStatus} — rate limit or block`);
+                    throw new Error(`Registry refused the search: HTTP ${first.searchStatus} — rate limit or block${said}`);
+                }
+                if (first.searchStatus >= 400 && first.searchStatus < 500) {
+                    this.stats.registryRejected++;
+                    throw new Error(`Registry rejected the search: HTTP ${first.searchStatus} — the request or its challenge token was not accepted${said}`);
                 }
                 this.stats.registryError++;
-                throw new Error(`Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows`);
+                throw new Error(`Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows${said}`);
             }
             const all = [...first.certificates];
             let failedPage = 0;
@@ -232,11 +247,13 @@ let LicenseService = class LicenseService {
                 await this.disposeBrowser();
             }
             const msg = err instanceof Error ? err.message : String(err);
-            if (/Turnstile|Registry refused the search/i.test(msg)) {
+            const ours = msg.split(REGISTRY_SAID)[0];
+            if (/Turnstile|Registry refused the search|Registry rejected the search/i.test(ours)) {
                 this.turnstileStreak++;
                 if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
                     this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
-                    this.logger.error(`Registry has refused the challenge ${this.turnstileStreak}x in a row — ` +
+                    const last = /Registry (?:refused|rejected) the search: (HTTP \d+)/.exec(ours)?.[1] ?? "the challenge";
+                    this.logger.error(`Registry has refused us ${this.turnstileStreak}x in a row (last: ${last}) — ` +
                         `pausing lookups for ${Math.round(TURNSTILE_COOLDOWN_MS / 1000)}s ` +
                         `(until ${new Date(this.blockedUntil).toISOString()}). ` +
                         `Asking again sooner tends to extend the refusal.`);
@@ -433,6 +450,7 @@ let LicenseService = class LicenseService {
         let searchParsed = Promise.resolve();
         let searchSeenAt = 0;
         let searchStatus = null;
+        let searchBody = null;
         let resolveSearch = () => undefined;
         const searchAnswered = new Promise((resolve) => {
             resolveSearch = resolve;
@@ -463,6 +481,12 @@ let LicenseService = class LicenseService {
                     if (!searchSeenAt) {
                         searchStatus = status;
                         searchSeenAt = Date.now();
+                        searchParsed = resp
+                            .text()
+                            .then((text) => {
+                            searchBody = text ? excerptBody(text) : null;
+                        })
+                            .catch(() => undefined);
                         resolveSearch();
                     }
                     return;
@@ -536,7 +560,8 @@ let LicenseService = class LicenseService {
         if (answered) {
             await searchParsed.catch(() => undefined);
             this.logger.log(`registry answered the search ${searchSeenAt - navAt}ms after navigation` +
-                (searchStatus !== null ? ` — with HTTP ${searchStatus}` : ""));
+                (searchStatus !== null ? ` — with HTTP ${searchStatus}` : "") +
+                (searchBody ? `: ${searchBody}` : ""));
         }
         else if (turnstileToken || capturedToken) {
             this.logger.warn(`registry did not answer the search within ${Math.round(PAGE_RESPONSE_TIMEOUT_MS / 1000)}s of the challenge`);
@@ -550,6 +575,7 @@ let LicenseService = class LicenseService {
                 total: reportedTotal,
                 answered,
                 searchStatus,
+                searchBody,
             };
         }
         try {
@@ -574,6 +600,7 @@ let LicenseService = class LicenseService {
                         total: reportedTotal,
                         answered: true,
                         searchStatus: null,
+                        searchBody: null,
                     };
                 }
             }

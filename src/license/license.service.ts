@@ -44,6 +44,28 @@ const MAX_LICENSE_PAGES = 200;
 const PAGE_RESPONSE_TIMEOUT_MS = 45_000;
 
 /**
+ * Where our words end and the registry's begin in a failure message.
+ *
+ * What the registry answered is appended after this, and nothing after it is
+ * ever classified: a reply that happens to mention the challenge must not turn
+ * its own server failing into a refusal.
+ */
+const REGISTRY_SAID = " — registry said: ";
+
+/**
+ * The start of what the registry answered, fit for one log line.
+ *
+ * An HTML error page is reduced to its title; anything else is flattened and
+ * cut. A 400 is only explainable by its body, and this is the one place the
+ * body survives.
+ */
+export function excerptBody(text: string, max = 300): string {
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(text)?.[1];
+  const flat = (title ?? text).replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
  * How many challenge failures in a row before we stop asking.
  *
  * Three: one is ordinary, two is bad luck, three in a row has not once been
@@ -125,6 +147,12 @@ interface CapturedTokenData {
    * is recorded rather than waited past.
    */
   searchStatus: number | null;
+  /**
+   * The start of what the registry said with that status, when it said
+   * anything. 21 and 25 Sep each had a quarter-hour of 400s with nothing in
+   * the log to say why.
+   */
+  searchBody?: string | null;
 }
 
 /**
@@ -169,11 +197,17 @@ export interface LicenseStats {
    */
   registryNoAnswer: number;
   /**
-   * Lookups whose search the registry answered with an error status — its
-   * own server failing, most often on a search slower than it allows. A 403
-   * or 429 is a refusal instead, and is not counted here.
+   * Lookups whose search the registry answered with a 5xx — its own server
+   * failing, most often on a search slower than it allows. A 4xx is the
+   * search being refused or rejected instead, and is not counted here.
    */
   registryError: number;
+  /**
+   * Lookups whose search the registry answered with a 4xx other than 403 or
+   * 429: the request or its challenge token not accepted. These come in runs
+   * and count towards the backoff; a server failing does not.
+   */
+  registryRejected: number;
   /**
    * Walks a later page would not finish, even asked twice. Failed rather
    * than returned: a short list handed over as complete is stored as the
@@ -193,11 +227,16 @@ export class LicenseService implements OnModuleDestroy {
   /**
    * Epoch ms until which lookups are refused without asking the registry.
    *
-   * Set after a run of challenge failures, cleared by the first success.
+   * Set after a run of refusals (see turnstileStreak), cleared by the first
+   * success.
    */
   private blockedUntil = 0;
 
-  /** Consecutive failures that were the challenge specifically, not the box. */
+  /**
+   * Consecutive refusals: the challenge failing, or the search answered 403,
+   * 429 or another 4xx. A failure of the box, or of the registry's own
+   * server, resets it.
+   */
   private turnstileStreak = 0;
 
   /**
@@ -230,6 +269,7 @@ export class LicenseService implements OnModuleDestroy {
     turnstileBlocked: 0,
     registryNoAnswer: 0,
     registryError: 0,
+    registryRejected: 0,
     partialWalks: 0,
   };
 
@@ -319,14 +359,27 @@ export class LicenseService implements OnModuleDestroy {
       // surfaced fifteen seconds later as "the registry did not answer",
       // which is not what happened.
       if (first.token && typeof first.searchStatus === "number") {
+        const said = first.searchBody
+          ? `${REGISTRY_SAID}${first.searchBody}`
+          : "";
         if (first.searchStatus === 403 || first.searchStatus === 429) {
           throw new Error(
-            `Registry refused the search: HTTP ${first.searchStatus} — rate limit or block`,
+            `Registry refused the search: HTTP ${first.searchStatus} — rate limit or block${said}`,
+          );
+        }
+        // Any other 4xx is the search itself not being accepted. 21 and 25
+        // Sep each had a quarter-hour of 400s, every one after a solved
+        // challenge, then 200s again on their own. They were reported as the
+        // server failing, which they are not, and nothing paused for them.
+        if (first.searchStatus >= 400 && first.searchStatus < 500) {
+          this.stats.registryRejected++;
+          throw new Error(
+            `Registry rejected the search: HTTP ${first.searchStatus} — the request or its challenge token was not accepted${said}`,
           );
         }
         this.stats.registryError++;
         throw new Error(
-          `Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows`,
+          `Registry answered the search with HTTP ${first.searchStatus} — its own server failed, most likely a search slower than it allows${said}`,
         );
       }
 
@@ -465,14 +518,27 @@ export class LicenseService implements OnModuleDestroy {
       // A challenge failure says something about the far side; every other
       // kind says something about us, and only the first is worth backing off
       // for. Counted separately for that reason.
-      // A search refused outright (403/429) counts too: it is the same far
-      // side deciding it has had enough of this address.
-      if (/Turnstile|Registry refused the search/i.test(msg)) {
+      // A search refused outright (403/429) or rejected (another 4xx) counts
+      // too: it is the same far side deciding it has had enough of us.
+      //
+      // Only our own words are read. What the registry said rides after
+      // REGISTRY_SAID, and a reply mentioning the challenge must not turn a
+      // server failing into a refusal.
+      const ours = msg.split(REGISTRY_SAID)[0];
+      if (
+        /Turnstile|Registry refused the search|Registry rejected the search/i.test(
+          ours,
+        )
+      ) {
         this.turnstileStreak++;
         if (this.turnstileStreak >= TURNSTILE_STREAK_BEFORE_BACKOFF) {
           this.blockedUntil = Date.now() + TURNSTILE_COOLDOWN_MS;
+          const last =
+            /Registry (?:refused|rejected) the search: (HTTP \d+)/.exec(
+              ours,
+            )?.[1] ?? "the challenge";
           this.logger.error(
-            `Registry has refused the challenge ${this.turnstileStreak}x in a row — ` +
+            `Registry has refused us ${this.turnstileStreak}x in a row (last: ${last}) — ` +
               `pausing lookups for ${Math.round(TURNSTILE_COOLDOWN_MS / 1000)}s ` +
               `(until ${new Date(this.blockedUntil).toISOString()}). ` +
               `Asking again sooner tends to extend the refusal.`,
@@ -758,6 +824,7 @@ export class LicenseService implements OnModuleDestroy {
     let searchParsed: Promise<void> = Promise.resolve();
     let searchSeenAt = 0;
     let searchStatus: number | null = null;
+    let searchBody: string | null = null;
     let resolveSearch: () => void = () => undefined;
     const searchAnswered = new Promise<void>((resolve) => {
       resolveSearch = resolve;
@@ -801,6 +868,14 @@ export class LicenseService implements OnModuleDestroy {
           if (!searchSeenAt) {
             searchStatus = status;
             searchSeenAt = Date.now();
+            // Read before the wait below lets go — it awaits searchParsed —
+            // so the reason is in hand when the failure is reported.
+            searchParsed = resp
+              .text()
+              .then((text) => {
+                searchBody = text ? excerptBody(text) : null;
+              })
+              .catch(() => undefined);
             resolveSearch();
           }
           return;
@@ -920,7 +995,8 @@ export class LicenseService implements OnModuleDestroy {
       await searchParsed.catch(() => undefined);
       this.logger.log(
         `registry answered the search ${searchSeenAt - navAt}ms after navigation` +
-          (searchStatus !== null ? ` — with HTTP ${searchStatus}` : ""),
+          (searchStatus !== null ? ` — with HTTP ${searchStatus}` : "") +
+          (searchBody ? `: ${searchBody}` : ""),
       );
     } else if (turnstileToken || capturedToken) {
       this.logger.warn(
@@ -937,6 +1013,7 @@ export class LicenseService implements OnModuleDestroy {
         total: reportedTotal,
         answered,
         searchStatus,
+        searchBody,
       };
     }
 
@@ -962,6 +1039,7 @@ export class LicenseService implements OnModuleDestroy {
             total: reportedTotal,
             answered: true,
             searchStatus: null,
+            searchBody: null,
           };
         }
       }
