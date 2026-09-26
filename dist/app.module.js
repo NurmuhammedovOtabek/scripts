@@ -26,6 +26,7 @@ const mib_module_1 = require("./mib/mib.module");
 const large_taxpayer_module_1 = require("./large-taxpayer/large-taxpayer.module");
 const birdarcha_module_1 = require("./birdarcha/birdarcha.module");
 const ejarima_module_1 = require("./ejarima/ejarima.module");
+const mehnat_module_1 = require("./mehnat/mehnat.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -47,6 +48,7 @@ exports.AppModule = AppModule = __decorate([
             large_taxpayer_module_1.LargeTaxpayerModule,
             birdarcha_module_1.BirdarchaModule,
             ejarima_module_1.EjarimaModule,
+            mehnat_module_1.MehnatModule,
         ],
         controllers: [app_controller_1.AppController, logs_controller_1.LogsController],
         providers: [app_service_1.AppService],

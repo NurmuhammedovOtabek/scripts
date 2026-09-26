@@ -11,6 +11,7 @@ export declare class AppController {
     }>;
     getBirdarcha(pin: string): Promise<import("./birdarcha/birdarcha.service").BirdarchaLookup>;
     getEjarima(serial: string, number: string, html?: string): Promise<import("./ejarima/ejarima.service").EjarimaLookup>;
+    getMehnatVacancies(tin: string): Promise<import("./mehnat/mehnat.service").MehnatVacanciesResult>;
     getHealth(): {
         status: string;
         reason: string | null;
