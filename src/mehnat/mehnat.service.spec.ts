@@ -7,17 +7,19 @@ const row = (id: number, tin = '201056873') => ({
   company_tin: tin,
   position_name: 'Texnik',
 });
-const list = (rows: any[]) => ({
+const list = (rows: any[], lastPage = 1) => ({
   success: true,
-  data: { data: rows, total: rows.length },
+  data: { data: rows, total: rows.length, last_page: lastPage },
 });
 
-function make(answer: (url: string) => { status: number; data?: any }) {
+function make(
+  answer: (url: string, params: any) => { status: number; data?: any },
+) {
   const calls: string[] = [];
   const http = {
-    get: jest.fn((url: string) => {
+    get: jest.fn((url: string, config: any) => {
       calls.push(url);
-      return of(answer(url));
+      return of(answer(url, config?.params ?? {}));
     }),
   };
   return { service: new MehnatService(http as any), http, calls };
@@ -88,10 +90,71 @@ describe('MehnatService', () => {
   it('asks the source by company_tin', async () => {
     const { service, http } = make(() => ({ status: 200, data: list([]) }));
     await service.getVacancies('201056873');
+    // per_page, not limit: the source ignores limit and sends 20
     expect((http.get.mock.calls[0] as any[])[1].params).toEqual({
       company_tin: '201056873',
-      limit: 100,
+      per_page: 100,
+      page: 1,
     });
+  });
+
+  it('walks every page of a big employer', async () => {
+    const { service } = make((url, params) => {
+      if (!url.endsWith('/vacancies'))
+        return { status: 200, data: { data: {} } };
+      return params.page === 1
+        ? { status: 200, data: list([row(1), row(2)], 3) }
+        : params.page === 2
+          ? { status: 200, data: list([row(3)], 3) }
+          : { status: 200, data: list([row(4)], 3) };
+    });
+
+    const res = await service.getVacancies('201056873');
+
+    expect(res.rows.map((r) => r.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('does not walk the national list an unknown tin gets back', async () => {
+    const { service, calls } = make(() => ({
+      status: 200,
+      data: list([row(1, '999999999')], 775),
+    }));
+
+    const res = await service.getVacancies('201056873');
+
+    expect(res.rows).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('fails the list when a later page fails, rather than returning half', async () => {
+    const { service } = make((url, params) =>
+      params.page === 1
+        ? { status: 200, data: list([row(1)], 2) }
+        : { status: 500 },
+    );
+
+    await expect(service.getVacancies('201056873')).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
+  });
+
+  it('stops reading postings past its time budget but keeps every row', async () => {
+    let now = 1_000_000;
+    const spy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const { service } = make((url) => {
+      if (url.endsWith('/vacancies')) {
+        return { status: 200, data: list([row(1), row(2), row(3)]) };
+      }
+      now += 8000; // each posting read eats past the 7s budget
+      return { status: 200, data: { data: { id: 1 } } };
+    });
+
+    const res = await service.getVacancies('201056873');
+    spy.mockRestore();
+
+    expect(res.rows).toHaveLength(3);
+    const unread = Object.values(res.details).filter((d) => d === null);
+    expect(unread.length).toBeGreaterThan(0);
   });
 });
 
