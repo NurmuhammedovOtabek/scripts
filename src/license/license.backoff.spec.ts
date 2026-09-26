@@ -1,5 +1,5 @@
 import { ServiceUnavailableException } from "@nestjs/common";
-import { LicenseService } from "./license.service";
+import { LicenseService, excerptBody } from "./license.service";
 import { redact, stripAnsi } from "../common/log-file";
 
 /**
@@ -447,7 +447,10 @@ describe("LicenseService — a registry that answers the search with an error", 
    * registry's own server gives up on it: HTTP 500 thirty seconds in, measured
    * 14 Sep in a slow spell, while the searches either side answered 200.
    */
-  const failingRegistry = (searchStatus: number) => {
+  const failingRegistry = (
+    searchStatus: number,
+    searchBody: string | null = null,
+  ) => {
     const svc = new LicenseService() as any;
     svc.ensureBrowser = jest.fn().mockResolvedValue({
       contexts: () => [
@@ -464,6 +467,7 @@ describe("LicenseService — a registry that answers the search with an error", 
       total: null,
       answered: true,
       searchStatus,
+      searchBody,
     });
     return svc;
   };
@@ -511,6 +515,94 @@ describe("LicenseService — a registry that answers the search with an error", 
 
     expect(svc.blockedUntil).toBeGreaterThan(Date.now());
     expect(svc.getStats().registryError).toBe(0);
+  });
+
+  it("calls a 400 the search being rejected, not the server failing", async () => {
+    // 21 and 25 Sep: a quarter-hour of 400s, each after a solved challenge,
+    // logged as "its own server failed".
+    const svc = failingRegistry(400);
+
+    const err = await svc.getLicensesByTin("311142996").catch((e: any) => e);
+
+    expect(String(err.message)).toMatch(/rejected the search: HTTP 400/);
+    expect(String(err.message)).not.toMatch(/own server failed/);
+    expect(svc.getStats().registryRejected).toBe(1);
+    expect(svc.getStats().registryError).toBe(0);
+  });
+
+  it("backs off after three 400s in a row, and refuses the fourth locally", async () => {
+    const svc = failingRegistry(400);
+    for (let i = 0; i < 3; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+    const opened = svc.ensureBrowser.mock.calls.length;
+
+    const err = await svc.getLicensesByTin("300000009").catch((e: any) => e);
+
+    expect(svc.turnstileStreak).toBe(3);
+    expect(svc.blockedUntil).toBeGreaterThan(Date.now());
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(svc.ensureBrowser.mock.calls.length).toBe(opened);
+  });
+
+  it("lets a server failure between them break the run", async () => {
+    // Two 400s, then the server itself failing: that is not a third refusal.
+    const svc = failingRegistry(400);
+    await svc.getLicensesByTin("300000001").catch(() => undefined);
+    await svc.getLicensesByTin("300000002").catch(() => undefined);
+    svc.captureTokenFromBrowser.mockResolvedValueOnce({
+      token: "a-real-token",
+      uuids: [],
+      certificates: [],
+      total: null,
+      answered: true,
+      searchStatus: 500,
+    });
+    await svc.getLicensesByTin("300000003").catch(() => undefined);
+    await svc.getLicensesByTin("300000004").catch(() => undefined);
+
+    expect(svc.turnstileStreak).toBe(1);
+    expect(svc.blockedUntil).toBe(0);
+  });
+
+  it("carries what the registry said into the failure", async () => {
+    const svc = failingRegistry(400, '{"message":"invalid token"}');
+
+    const err = await svc.getLicensesByTin("311142996").catch((e: any) => e);
+
+    expect(String(err.message)).toContain(
+      'registry said: {"message":"invalid token"}',
+    );
+    expect(svc.getStats().lastError).toContain("invalid token");
+  });
+
+  it("never lets the registry's words make a server failure a refusal", async () => {
+    // A 500 whose body happens to mention the challenge is still the server
+    // failing — classifying on it would pause every lookup for ten minutes.
+    const svc = failingRegistry(500, "turnstile verification backend timeout");
+
+    for (let i = 0; i < 4; i++) {
+      await svc.getLicensesByTin(`30000000${i}`).catch(() => undefined);
+    }
+
+    expect(svc.turnstileStreak).toBe(0);
+    expect(svc.blockedUntil).toBe(0);
+  });
+});
+
+describe("excerptBody", () => {
+  it("keeps only the title of an HTML error page", () => {
+    const page = "<html><head><title>400 Bad Request</title></head><body>…</body></html>";
+    expect(excerptBody(page)).toBe("400 Bad Request");
+  });
+
+  it("flattens a reply onto one line", () => {
+    expect(excerptBody('{\n  "message": "bad"\n}')).toBe('{ "message": "bad" }');
+  });
+
+  it("cuts a long reply and says so", () => {
+    const out = excerptBody("x".repeat(500), 10);
+    expect(out).toBe(`${"x".repeat(10)}…`);
   });
 });
 
