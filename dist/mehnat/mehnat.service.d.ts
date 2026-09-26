@@ -9,6 +9,7 @@ export declare class MehnatService {
     private readonly logger;
     constructor(http: HttpService);
     getVacancies(tin: string): Promise<MehnatVacanciesResult>;
+    private listAll;
     private fetchJson;
 }
 export declare function rowsForTin(body: any, tin: string): any[];

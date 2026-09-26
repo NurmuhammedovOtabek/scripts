@@ -20,6 +20,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36';
 const PAGE_SIZE = 100;
 const DETAIL_CONCURRENCY = 6;
+const DETAIL_BUDGET_MS = 7000;
 let MehnatService = MehnatService_1 = class MehnatService {
     http;
     logger = new common_1.Logger(MehnatService_1.name);
@@ -32,20 +33,25 @@ let MehnatService = MehnatService_1 = class MehnatService {
             throw new common_1.BadRequestException('tin must be 9 digits');
         }
         const startedAt = Date.now();
-        let body;
+        let rows;
+        let pages;
         try {
-            body = await this.fetchJson(`${BASE_URL}/vacancies`, { company_tin: t, limit: PAGE_SIZE }, 15000);
+            ({ rows, pages } = await this.listAll(t));
         }
         catch (err) {
             this.logger.warn(`[mehnat] tin=${t} list failed: ${err?.message ?? err}`);
             throw new common_1.BadGatewayException('ish.mehnat.uz did not answer');
         }
-        const rows = rowsForTin(body, t);
+        const deadline = Date.now() + DETAIL_BUDGET_MS;
         const details = {};
         await mapLimit(rows, DETAIL_CONCURRENCY, async (r) => {
             const id = String(r?.id ?? '');
             if (!id)
                 return;
+            if (Date.now() > deadline) {
+                details[id] = null;
+                return;
+            }
             try {
                 const d = await this.fetchJson(`${BASE_URL}/vacancies/${encodeURIComponent(id)}`, {}, 10000);
                 details[id] = d?.data ?? null;
@@ -56,8 +62,27 @@ let MehnatService = MehnatService_1 = class MehnatService {
             }
         });
         const missing = Object.values(details).filter((d) => d === null).length;
-        this.logger.log(`[mehnat] tin=${t} — ${rows.length} vacancy(ies), ${missing} detail(s) missing, ${Date.now() - startedAt}ms`);
+        this.logger.log(`[mehnat] tin=${t} — ${rows.length} vacancy(ies) in ${pages} page(s), ${missing} detail(s) missing, ${Date.now() - startedAt}ms`);
         return { tin: t, rows, details };
+    }
+    async listAll(tin) {
+        const rows = [];
+        let page = 1;
+        let lastPage = 1;
+        let pages = 0;
+        do {
+            pages++;
+            const body = await this.fetchJson(`${BASE_URL}/vacancies`, { company_tin: tin, per_page: PAGE_SIZE, page }, 15000);
+            const pageRows = body?.data?.data;
+            const all = Array.isArray(pageRows) ? pageRows : [];
+            const mine = rowsForTin(body, tin);
+            rows.push(...mine);
+            if (mine.length < all.length)
+                break;
+            lastPage = Number(body?.data?.last_page) || 1;
+            page++;
+        } while (page <= lastPage);
+        return { rows, pages };
     }
     async fetchJson(url, params, timeout) {
         const resp = await (0, rxjs_1.firstValueFrom)(this.http.get(url, {

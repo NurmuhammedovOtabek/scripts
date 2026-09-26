@@ -13,11 +13,21 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36';
 
-/** One employer holds a few dozen openings at most; 100 covers it in one page. */
+/**
+ * The source pages with `per_page` (it ignores `limit` and would give 20).
+ * Most employers fit in one page; the rest are walked to the last page.
+ */
 const PAGE_SIZE = 100;
 
 /** Postings are read one by one after the list; a few at a time is polite. */
 const DETAIL_CONCURRENCY = 6;
+
+/**
+ * The backend gives the whole call ~11s. Postings not read by this point are
+ * left null — their list rows still go back — so a big employer returns a
+ * full list with some summaries instead of timing out with nothing.
+ */
+const DETAIL_BUDGET_MS = 7000;
 
 export interface MehnatVacanciesResult {
   tin: string;
@@ -54,23 +64,24 @@ export class MehnatService {
     }
 
     const startedAt = Date.now();
-    let body: any;
+    let rows: any[];
+    let pages: number;
     try {
-      body = await this.fetchJson(
-        `${BASE_URL}/vacancies`,
-        { company_tin: t, limit: PAGE_SIZE },
-        15000,
-      );
+      ({ rows, pages } = await this.listAll(t));
     } catch (err: any) {
       this.logger.warn(`[mehnat] tin=${t} list failed: ${err?.message ?? err}`);
       throw new BadGatewayException('ish.mehnat.uz did not answer');
     }
 
-    const rows = rowsForTin(body, t);
+    const deadline = Date.now() + DETAIL_BUDGET_MS;
     const details: Record<string, any> = {};
     await mapLimit(rows, DETAIL_CONCURRENCY, async (r) => {
       const id = String(r?.id ?? '');
       if (!id) return;
+      if (Date.now() > deadline) {
+        details[id] = null;
+        return;
+      }
       try {
         const d = await this.fetchJson(
           `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
@@ -88,9 +99,38 @@ export class MehnatService {
 
     const missing = Object.values(details).filter((d) => d === null).length;
     this.logger.log(
-      `[mehnat] tin=${t} — ${rows.length} vacancy(ies), ${missing} detail(s) missing, ${Date.now() - startedAt}ms`,
+      `[mehnat] tin=${t} — ${rows.length} vacancy(ies) in ${pages} page(s), ${missing} detail(s) missing, ${Date.now() - startedAt}ms`,
     );
     return { tin: t, rows, details };
+  }
+
+  /**
+   * Every list row of the employer, page by page. A page that fails fails the
+   * whole list: half a list would read as a company hiring less than it is.
+   */
+  private async listAll(tin: string): Promise<{ rows: any[]; pages: number }> {
+    const rows: any[] = [];
+    let page = 1;
+    let lastPage = 1;
+    let pages = 0;
+    do {
+      pages++;
+      const body = await this.fetchJson(
+        `${BASE_URL}/vacancies`,
+        { company_tin: tin, per_page: PAGE_SIZE, page },
+        15000,
+      );
+      const pageRows: unknown = body?.data?.data;
+      const all = Array.isArray(pageRows) ? pageRows : [];
+      const mine = rowsForTin(body, tin);
+      rows.push(...mine);
+      // An unknown tin gets the whole national list back, unfiltered —
+      // tens of thousands of rows. Never walk that.
+      if (mine.length < all.length) break;
+      lastPage = Number(body?.data?.last_page) || 1;
+      page++;
+    } while (page <= lastPage);
+    return { rows, pages };
   }
 
   private async fetchJson(
