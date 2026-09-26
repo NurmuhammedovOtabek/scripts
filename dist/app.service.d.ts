@@ -1,5 +1,6 @@
 import { BirdarchaService } from './birdarcha/birdarcha.service';
 import { EjarimaService } from './ejarima/ejarima.service';
+import { MehnatService } from './mehnat/mehnat.service';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
 import { LicenseService } from './license/license.service';
@@ -23,7 +24,8 @@ export declare class AppService {
     private readonly largeTaxpayer;
     private readonly birdarcha;
     private readonly ejarima;
-    constructor(statRegistry: StatRegistryService, courtCases: CourtCasesService, license: LicenseService, davreestr: DavreestrService, taxRisk: TaxRiskService, taxDebtor: TaxDebtorService, garov: GarovService, sert: SertScriptService, mib: MibScriptService, largeTaxpayer: LargeTaxpayerService, birdarcha: BirdarchaService, ejarima: EjarimaService);
+    private readonly mehnat;
+    constructor(statRegistry: StatRegistryService, courtCases: CourtCasesService, license: LicenseService, davreestr: DavreestrService, taxRisk: TaxRiskService, taxDebtor: TaxDebtorService, garov: GarovService, sert: SertScriptService, mib: MibScriptService, largeTaxpayer: LargeTaxpayerService, birdarcha: BirdarchaService, ejarima: EjarimaService, mehnat: MehnatService);
     getFromStatus(inn: string): Promise<import("./parser").RegistrDto>;
     getCourtCases(tin?: string, caseNumber?: string): Promise<any[] | {
         message: string;
@@ -63,4 +65,5 @@ export declare class AppService {
     getLargeTaxpayer(tin: string): Promise<import("./large-taxpayer/large-taxpayer.service").LargeTaxpayerResult>;
     getBirdarcha(pin: string): Promise<import("./birdarcha/birdarcha.service").BirdarchaLookup>;
     getEjarimaByPassport(serial: string, number: string, html?: string): Promise<import("./ejarima/ejarima.service").EjarimaLookup>;
+    getMehnatVacancies(tin: string): Promise<import("./mehnat/mehnat.service").MehnatVacanciesResult>;
 }

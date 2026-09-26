@@ -34,6 +34,11 @@ export class AppController {
     return this.appService.getEjarimaByPassport(serial, number, html);
   }
 
+  @Get('mehnat/vacancies')
+  getMehnatVacancies(@Query('tin') tin: string) {
+    return this.appService.getMehnatVacancies(tin);
+  }
+
   @Get('health')
   getHealth() {
     return this.appService.getHealth();

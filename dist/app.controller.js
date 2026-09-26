@@ -35,6 +35,9 @@ let AppController = class AppController {
     getEjarima(serial, number, html) {
         return this.appService.getEjarimaByPassport(serial, number, html);
     }
+    getMehnatVacancies(tin) {
+        return this.appService.getMehnatVacancies(tin);
+    }
     getHealth() {
         return this.appService.getHealth();
     }
@@ -105,6 +108,13 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "getEjarima", null);
+__decorate([
+    (0, common_1.Get)('mehnat/vacancies'),
+    __param(0, (0, common_1.Query)('tin')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AppController.prototype, "getMehnatVacancies", null);
 __decorate([
     (0, common_1.Get)('health'),
     __metadata("design:type", Function),

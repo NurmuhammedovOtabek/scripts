@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppService = void 0;
 const birdarcha_service_1 = require("./birdarcha/birdarcha.service");
 const ejarima_service_1 = require("./ejarima/ejarima.service");
+const mehnat_service_1 = require("./mehnat/mehnat.service");
 const common_1 = require("@nestjs/common");
 const stat_registry_service_1 = require("./stat-registry/stat-registry.service");
 const court_cases_service_1 = require("./court-cases/court-cases.service");
@@ -36,7 +37,8 @@ let AppService = class AppService {
     largeTaxpayer;
     birdarcha;
     ejarima;
-    constructor(statRegistry, courtCases, license, davreestr, taxRisk, taxDebtor, garov, sert, mib, largeTaxpayer, birdarcha, ejarima) {
+    mehnat;
+    constructor(statRegistry, courtCases, license, davreestr, taxRisk, taxDebtor, garov, sert, mib, largeTaxpayer, birdarcha, ejarima, mehnat) {
         this.statRegistry = statRegistry;
         this.courtCases = courtCases;
         this.license = license;
@@ -49,6 +51,7 @@ let AppService = class AppService {
         this.largeTaxpayer = largeTaxpayer;
         this.birdarcha = birdarcha;
         this.ejarima = ejarima;
+        this.mehnat = mehnat;
     }
     getFromStatus(inn) {
         return this.statRegistry.getFromStatus(inn);
@@ -119,6 +122,9 @@ let AppService = class AppService {
     getEjarimaByPassport(serial, number, html) {
         return this.ejarima.getByPassport(serial, number, html === '1' || html === 'true');
     }
+    getMehnatVacancies(tin) {
+        return this.mehnat.getVacancies(tin);
+    }
 };
 exports.AppService = AppService;
 exports.AppService = AppService = __decorate([
@@ -134,6 +140,7 @@ exports.AppService = AppService = __decorate([
         mib_service_1.MibScriptService,
         large_taxpayer_service_1.LargeTaxpayerService,
         birdarcha_service_1.BirdarchaService,
-        ejarima_service_1.EjarimaService])
+        ejarima_service_1.EjarimaService,
+        mehnat_service_1.MehnatService])
 ], AppService);
 //# sourceMappingURL=app.service.js.map

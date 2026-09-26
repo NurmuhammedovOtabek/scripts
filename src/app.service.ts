@@ -1,5 +1,6 @@
 import { BirdarchaService } from './birdarcha/birdarcha.service';
 import { EjarimaService } from './ejarima/ejarima.service';
+import { MehnatService } from './mehnat/mehnat.service';
 import { Injectable } from '@nestjs/common';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
@@ -27,6 +28,7 @@ export class AppService {
     private readonly largeTaxpayer: LargeTaxpayerService,
     private readonly birdarcha: BirdarchaService,
     private readonly ejarima: EjarimaService,
+    private readonly mehnat: MehnatService,
   ) {}
 
   getFromStatus(inn: string) {
@@ -147,5 +149,10 @@ export class AppService {
       number,
       html === '1' || html === 'true',
     );
+  }
+
+  /** A company's open vacancies from the national vacancy database, by tin. */
+  getMehnatVacancies(tin: string) {
+    return this.mehnat.getVacancies(tin);
   }
 }
