@@ -1,0 +1,1367 @@
+[
+  {
+    "code": "1708",
+    "name_uz": "Jizzax viloyati",
+    "name_ru": "Джизакская область",
+    "parent_code": "17",
+    "level": 2
+  },
+  {
+    "code": "1708200",
+    "name_uz": "Jizzax viloyatining tumanlari",
+    "name_ru": "Районы Джизакской области",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708201",
+    "name_uz": "Arnasoy tumani",
+    "name_ru": "Арнасайский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708204",
+    "name_uz": "Baxmal tumani",
+    "name_ru": "Бахмальский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708209",
+    "name_uz": "G'allaorol tumani",
+    "name_ru": "Галляаральский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708212",
+    "name_uz": "Sharof Rashidov tumani",
+    "name_ru": "Шароф Рашидовский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708215",
+    "name_uz": "Do'stlik tumani",
+    "name_ru": "Дустликский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708218",
+    "name_uz": "Zomin tumani",
+    "name_ru": "Зааминский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708220",
+    "name_uz": "Zarbdor tumani",
+    "name_ru": "Зарбдарский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708223",
+    "name_uz": "Mirzacho'l tumani",
+    "name_ru": "Мирзачульский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708225",
+    "name_uz": "Zafarobod tumani",
+    "name_ru": "Зафарабадский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708228",
+    "name_uz": "Paxtakor tumani",
+    "name_ru": "Пахтакорский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708235",
+    "name_uz": "Forish tumani",
+    "name_ru": "Фаришский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708237",
+    "name_uz": "Yangiobod tumani",
+    "name_ru": "Янгиободский район",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708400",
+    "name_uz": "Jizzax viloyatining viloyat ahamiyatiga ega shaharlari",
+    "name_ru": "Города областного подчинения Джизакской области",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708401",
+    "name_uz": "Jizzax",
+    "name_ru": "Джизак",
+    "parent_code": "1708",
+    "level": 3
+  },
+  {
+    "code": "1708201550",
+    "name_uz": "Arnasoy tumanining shaharchalari",
+    "name_ru": "Городские поселки Арнасайского района",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201551",
+    "name_uz": "G'oliblar",
+    "name_ru": "Голиблар",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201556",
+    "name_uz": "Gulbahor",
+    "name_ru": "Гулбахор",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201800",
+    "name_uz": "Arnasoy tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Арнасайского района",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201802",
+    "name_uz": "Bo'ston",
+    "name_ru": "Бустон",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201803",
+    "name_uz": "Do'stlik",
+    "name_ru": "Дустлик",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201804",
+    "name_uz": "Zarafshon",
+    "name_ru": "Зарафшан",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201806",
+    "name_uz": "Oltin vodiy",
+    "name_ru": "Олтин водий",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201807",
+    "name_uz": "Cho'lquvar",
+    "name_ru": "Чулкувар",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708201813",
+    "name_uz": "Yangibo'ston",
+    "name_ru": "Янгибустан",
+    "parent_code": "1708201",
+    "level": 4
+  },
+  {
+    "code": "1708204550",
+    "name_uz": "Baxmal tumanining shaharchalari",
+    "name_ru": "Городские поселки Бахмальского района",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204551",
+    "name_uz": "O'smat",
+    "name_ru": "Усмат",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204552",
+    "name_uz": "Oqtosh",
+    "name_ru": "Акташ",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204553",
+    "name_uz": "Mo'g'ol",
+    "name_ru": "Мугол",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204554",
+    "name_uz": "Novqa",
+    "name_ru": "Новка",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204555",
+    "name_uz": "Alamli",
+    "name_ru": "Аламли",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204556",
+    "name_uz": "Tongotar",
+    "name_ru": "Тонготар",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204558",
+    "name_uz": "Baxmal",
+    "name_ru": "Бахмал",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204800",
+    "name_uz": "Baxmal tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Бахмальского района",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204802",
+    "name_uz": "Oyqor",
+    "name_ru": "Айкар",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204804",
+    "name_uz": "Oqtosh",
+    "name_ru": "Акташ",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204808",
+    "name_uz": "Bog'ishamol",
+    "name_ru": "Багишамал",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204810",
+    "name_uz": "Barlos",
+    "name_ru": "Барлас",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204812",
+    "name_uz": "Baxmal",
+    "name_ru": "Бахмал",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204817",
+    "name_uz": "Gulbuloq",
+    "name_ru": "Гульбулак",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204830",
+    "name_uz": "Mo'g'ol",
+    "name_ru": "Мугал",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204835",
+    "name_uz": "Sangzor",
+    "name_ru": "Сангзар",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204840",
+    "name_uz": "Tongotar",
+    "name_ru": "Тонготар",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708204845",
+    "name_uz": "Uzunbuloq",
+    "name_ru": "Узунбулак",
+    "parent_code": "1708204",
+    "level": 4
+  },
+  {
+    "code": "1708209500",
+    "name_uz": "G'allaorol tumanining tuman ahamiyatiga ega shaharlari",
+    "name_ru": "Города районного подчинения Галляаральского района",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209501",
+    "name_uz": "G'allaorol",
+    "name_ru": "Галляарал",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209550",
+    "name_uz": "G'allaorol tumanining shaharchalari",
+    "name_ru": "Городские поселки Галляаральского района",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209554",
+    "name_uz": "Qo'ytosh",
+    "name_ru": "Кайташ",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209557",
+    "name_uz": "Marjonbuloq",
+    "name_ru": "Марджанбулак",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209559",
+    "name_uz": "Lalmikor",
+    "name_ru": "Лалмикор",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209561",
+    "name_uz": "Qangliobod",
+    "name_ru": "Канглиобод",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209565",
+    "name_uz": "Abdukarim",
+    "name_ru": "Абдукарим",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209567",
+    "name_uz": "Chuvilloq",
+    "name_ru": "Чувиллок",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209800",
+    "name_uz": "G'allaorol tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Галляаральского района",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209823",
+    "name_uz": "G'ubdin",
+    "name_ru": "Губдин",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209825",
+    "name_uz": "Xonimqo'rg'on",
+    "name_ru": "Хонимкуpган",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209834",
+    "name_uz": "Ittifoq",
+    "name_ru": "Иттифак",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209836",
+    "name_uz": "Gulchambar",
+    "name_ru": "Гулчамбар",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209838",
+    "name_uz": "Qipchoqsuv",
+    "name_ru": "Кипчоксув",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209848",
+    "name_uz": "Ko'kbuloq",
+    "name_ru": "Кокбулак",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209853",
+    "name_uz": "Korizquduq",
+    "name_ru": "Коризкудук",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209857",
+    "name_uz": "Guliston",
+    "name_ru": "Гулистан",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209860",
+    "name_uz": "Buloqboshi",
+    "name_ru": "Булакбаши",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209865",
+    "name_uz": "Madaniyat",
+    "name_ru": "Маданият",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209868",
+    "name_uz": "Mirzabuloq",
+    "name_ru": "Мирзабулак",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209870",
+    "name_uz": "Moltob",
+    "name_ru": "Молтаб",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209875",
+    "name_uz": "Tozaurug'",
+    "name_ru": "Тозауpуг",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708209880",
+    "name_uz": "Mulkush",
+    "name_ru": "Мулкуш",
+    "parent_code": "1708209",
+    "level": 4
+  },
+  {
+    "code": "1708212550",
+    "name_uz": "Sharof Rashidov tumanining shaharchalari",
+    "name_ru": "Городские поселки Шароф Рашидовского района",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212551",
+    "name_uz": "Uch-tepa",
+    "name_ru": "Уч-тепа",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212552",
+    "name_uz": "Gandumtosh",
+    "name_ru": "Гандумтош",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212553",
+    "name_uz": "Qorayantoq",
+    "name_ru": "Караянтак",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212554",
+    "name_uz": "Qang'li",
+    "name_ru": "Кангли",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212555",
+    "name_uz": "Toqchiliq",
+    "name_ru": "Токчилик",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212557",
+    "name_uz": "Mulkanlik",
+    "name_ru": "Мулканлик",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212559",
+    "name_uz": "Jizzaxlik",
+    "name_ru": "Жиззахлик",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212800",
+    "name_uz": "Sharof Rashidov tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Шароф Рашидовского района",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212807",
+    "name_uz": "Oq oltin",
+    "name_ru": "Акалтын",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212810",
+    "name_uz": "Ziyokor",
+    "name_ru": "Зиекор",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212816",
+    "name_uz": "Qang'li",
+    "name_ru": "Кангли",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212820",
+    "name_uz": "Rovat",
+    "name_ru": "Рават",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212832",
+    "name_uz": "Qo'shbarmoq",
+    "name_ru": "Кушбаpмок",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212835",
+    "name_uz": "Paxtaobod",
+    "name_ru": "Пахтаабад",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212837",
+    "name_uz": "Qulama",
+    "name_ru": "Кулама",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212854",
+    "name_uz": "Xayrobod",
+    "name_ru": "Хайрабад",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212860",
+    "name_uz": "Fayzobod",
+    "name_ru": "Файзобод",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212865",
+    "name_uz": "Kuyovboshi",
+    "name_ru": "Куёвбоши",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212870",
+    "name_uz": "Samarqand quduq",
+    "name_ru": "Самаpканд - кудук",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708212875",
+    "name_uz": "Uchtepa",
+    "name_ru": "Учтепа",
+    "parent_code": "1708212",
+    "level": 4
+  },
+  {
+    "code": "1708215500",
+    "name_uz": "Do'stlik tumanining tuman ahamiyatiga ega shaharlari",
+    "name_ru": "Города районного подчинения Дустликского района",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215501",
+    "name_uz": "Do'stlik",
+    "name_ru": "Дустлик",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215550",
+    "name_uz": "Do'stlik tumanining shaharchalari",
+    "name_ru": "Городские поселки Дустликского района",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215553",
+    "name_uz": "Navro'z",
+    "name_ru": "Навруз",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215800",
+    "name_uz": "Do'stlik tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Дустликского района",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215803",
+    "name_uz": "Bog'zor",
+    "name_ru": "Багзар",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215805",
+    "name_uz": "Bunyodkor",
+    "name_ru": "Бунедкор",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215812",
+    "name_uz": "Qahramon",
+    "name_ru": "Кахрамон",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215823",
+    "name_uz": "Manas",
+    "name_ru": "Манас",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215830",
+    "name_uz": "Saritepa",
+    "name_ru": "Саритепа",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215840",
+    "name_uz": "Oltin vodiy",
+    "name_ru": "Олтин водий",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708215845",
+    "name_uz": "Mevazor",
+    "name_ru": "Мевазоp",
+    "parent_code": "1708215",
+    "level": 4
+  },
+  {
+    "code": "1708218500",
+    "name_uz": "Zomin tumanining tuman ahamiyatiga ega shaharlari",
+    "name_ru": "Города районного подчинения Зааминского района",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218503",
+    "name_uz": "Dashtobod",
+    "name_ru": "Даштобод",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218550",
+    "name_uz": "Zomin tumanining shaharchalari",
+    "name_ru": "Городские поселки Зааминского района",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218551",
+    "name_uz": "Zomin",
+    "name_ru": "Заамин",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218553",
+    "name_uz": "Yom",
+    "name_ru": "Ем",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218555",
+    "name_uz": "Sirg'ali",
+    "name_ru": "Сиргали",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218557",
+    "name_uz": "Pshag'or",
+    "name_ru": "Пшагор",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218800",
+    "name_uz": "Zomin tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Зааминского района",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218811",
+    "name_uz": "G'allakor",
+    "name_ru": "Галлякор",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218813",
+    "name_uz": "Gulshan",
+    "name_ru": "Гульшан",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218817",
+    "name_uz": "Duoba",
+    "name_ru": "Дуоба",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218834",
+    "name_uz": "A.Navoiy",
+    "name_ru": "им. Навои",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218838",
+    "name_uz": "Obi hayot",
+    "name_ru": "Обихаят",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218847",
+    "name_uz": "Chorvador",
+    "name_ru": "Тинчлик",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218857",
+    "name_uz": "Chorvador",
+    "name_ru": "Чарвадар",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218858",
+    "name_uz": "Istiqlol",
+    "name_ru": "Истиклол",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218860",
+    "name_uz": "Beshkubi",
+    "name_ru": "Бешкуби",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218865",
+    "name_uz": null,
+    "name_ru": "Янгихаят",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218870",
+    "name_uz": "Shirin",
+    "name_ru": "Шиpин",
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708218875",
+    "name_uz": "Toshkeskan",
+    "name_ru": null,
+    "parent_code": "1708218",
+    "level": 4
+  },
+  {
+    "code": "1708220550",
+    "name_uz": "Zarbdor tumanining shaharchalari",
+    "name_ru": "Городские поселки Зарбдарского района",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220551",
+    "name_uz": "Zarbdor",
+    "name_ru": "Зарбдар",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220553",
+    "name_uz": "Bo'ston",
+    "name_ru": "Бустан",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220555",
+    "name_uz": "Fayzobod",
+    "name_ru": "Файзобод",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220557",
+    "name_uz": "Sharq yulduzi",
+    "name_ru": "Шарк Юлдузи",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220800",
+    "name_uz": "Zarbdor tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Зарбдарского района",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220827",
+    "name_uz": "Sharq yulduzi",
+    "name_ru": "Шаpк Юлдузи",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220831",
+    "name_uz": "Toshkesgan",
+    "name_ru": "Ташкесган",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220835",
+    "name_uz": "Tinchlik",
+    "name_ru": "Тинчлик",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220843",
+    "name_uz": "Oqar",
+    "name_ru": "Окар",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220850",
+    "name_uz": "Lalmikor",
+    "name_ru": "Лалмикоp",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220863",
+    "name_uz": "Yangikent",
+    "name_ru": "Янгикент",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220865",
+    "name_uz": "Andijon",
+    "name_ru": "Андижан",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708220870",
+    "name_uz": "Adirobod",
+    "name_ru": "Адиpабад",
+    "parent_code": "1708220",
+    "level": 4
+  },
+  {
+    "code": "1708223500",
+    "name_uz": "Mirzacho'l tumanining tuman ahamiyatiga ega shaharlari",
+    "name_ru": "Города районного подчинения Мирзачульского района",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223501",
+    "name_uz": "Gagarin",
+    "name_ru": "Гагарин",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223550",
+    "name_uz": "Mirzacho'l tumanining shaharchalari",
+    "name_ru": "Городские поселки Мирзачульского района",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223553",
+    "name_uz": "Paxtazor",
+    "name_ru": "Пахтазор",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223555",
+    "name_uz": "Mirzadala",
+    "name_ru": "Мирзадала",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223800",
+    "name_uz": "Mirzacho'l tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Мирзачульского района",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223803",
+    "name_uz": "Bog'bon",
+    "name_ru": "Багбан",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223815",
+    "name_uz": "Jibek-jo'li",
+    "name_ru": "Жибек- жолы",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223830",
+    "name_uz": "Toshkent",
+    "name_ru": "Ташкент",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223833",
+    "name_uz": "O'zbekiston",
+    "name_ru": "Узбекистан",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223840",
+    "name_uz": "Yangidala",
+    "name_ru": "Янгидала",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708223850",
+    "name_uz": "Gulzor",
+    "name_ru": "Гульзар",
+    "parent_code": "1708223",
+    "level": 4
+  },
+  {
+    "code": "1708225550",
+    "name_uz": "Zafarobod tumanining shaharchalari",
+    "name_ru": "Городские поселки Зафарабадского района",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225551",
+    "name_uz": "Zafarobod",
+    "name_ru": "Зафарабад",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225553",
+    "name_uz": "Yorqin",
+    "name_ru": "Яркин",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225555",
+    "name_uz": "Pistalikent",
+    "name_ru": "Писталикент",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225557",
+    "name_uz": "Nurafshon",
+    "name_ru": "Нурафшон",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225800",
+    "name_uz": "Zafarobod tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Зафарабадского района",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225802",
+    "name_uz": "Birlik",
+    "name_ru": "Бирлик",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225807",
+    "name_uz": "Yorqin",
+    "name_ru": "Еркин",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225812",
+    "name_uz": "Lolazor",
+    "name_ru": "Лолазор",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225828",
+    "name_uz": "Uzun",
+    "name_ru": "Узун",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225832",
+    "name_uz": "Xulkar",
+    "name_ru": "Хулкар",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708225848",
+    "name_uz": "Chimqo'rg'on",
+    "name_ru": "Чимкурган",
+    "parent_code": "1708225",
+    "level": 4
+  },
+  {
+    "code": "1708228500",
+    "name_uz": "Paxtakor tumanining tuman ahamiyatiga ega shaharla",
+    "name_ru": "Города районного подчинения Пахтакорского района",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228501",
+    "name_uz": "Paxtakor",
+    "name_ru": "Пахтакор",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228550",
+    "name_uz": "Paxtakor tumanining shaharchalari",
+    "name_ru": "Городские поселки Пахтакорского района",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228553",
+    "name_uz": "Gulzor",
+    "name_ru": "Гулзор",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228800",
+    "name_uz": "Paxtakor tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Пахтакорского района",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228805",
+    "name_uz": "Buyuk Ipak yo'li",
+    "name_ru": "Буюк Ипак йули",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228807",
+    "name_uz": "Olmazor",
+    "name_ru": "Алмазар",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228819",
+    "name_uz": "Mingchinor",
+    "name_ru": "Мингчинар",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228822",
+    "name_uz": "Paxtakor",
+    "name_ru": "Пахтакор",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228828",
+    "name_uz": "Bog'ishamol",
+    "name_ru": "Богишамол",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228835",
+    "name_uz": "Chamanzor",
+    "name_ru": "Чаманзар",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708228840",
+    "name_uz": "Oq buloq",
+    "name_ru": "Акбулак",
+    "parent_code": "1708228",
+    "level": 4
+  },
+  {
+    "code": "1708235550",
+    "name_uz": "Forish tumanining shaharchalari",
+    "name_ru": "Городские поселки Фаришского pайона",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235551",
+    "name_uz": "Bog'don",
+    "name_ru": "Богдон",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235560",
+    "name_uz": "Uchquloch",
+    "name_ru": "Учкулач",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235800",
+    "name_uz": "Forish tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Фаришского района",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235805",
+    "name_uz": "Omonkeldi",
+    "name_ru": "Амангельды",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235813",
+    "name_uz": "Darvoza",
+    "name_ru": "Дарваза",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235824",
+    "name_uz": "Arnasoy",
+    "name_ru": "Аpнасай",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235828",
+    "name_uz": "Qoraabdol",
+    "name_ru": "Караабдал",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235835",
+    "name_uz": "Egizbuloq",
+    "name_ru": "Эгизбулак",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235846",
+    "name_uz": "Qizilqum",
+    "name_ru": "Кызылкум",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235868",
+    "name_uz": "Forish",
+    "name_ru": "Фариш",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235885",
+    "name_uz": "Uxum",
+    "name_ru": "Ухум",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235890",
+    "name_uz": "Garasha",
+    "name_ru": "Гараша",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708235895",
+    "name_uz": "Osmonsoy",
+    "name_ru": "Османсай",
+    "parent_code": "1708235",
+    "level": 4
+  },
+  {
+    "code": "1708237550",
+    "name_uz": "Yangiobod tumanining shaharchalari",
+    "name_ru": "Городские поселки Янгиабадского района",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237552",
+    "name_uz": "Yangiobod",
+    "name_ru": "Янгиабад",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237554",
+    "name_uz": "Savot",
+    "name_ru": "Савот",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237800",
+    "name_uz": "Yangiobod tumanining qishloq fuqarolar yig'inlari",
+    "name_ru": "Сельские сходы граждан Янгиободского района",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237804",
+    "name_uz": "Sarmich",
+    "name_ru": "Сармич",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237813",
+    "name_uz": "Xo'jamushkent",
+    "name_ru": "Ходжамушкент",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237822",
+    "name_uz": "Savot",
+    "name_ru": "Сават",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237831",
+    "name_uz": "Havotog'",
+    "name_ru": "Ховотог",
+    "parent_code": "1708237",
+    "level": 4
+  },
+  {
+    "code": "1708237840",
+    "name_uz": "Xovos",
+    "name_ru": "Хавас",
+    "parent_code": "1708237",
+    "level": 4
+  }
+]

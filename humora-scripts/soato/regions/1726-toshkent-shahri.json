@@ -1,0 +1,114 @@
+[
+  {
+    "code": "1726",
+    "name_uz": "Toshkent shahri",
+    "name_ru": "город Ташкент",
+    "parent_code": "17",
+    "level": 2
+  },
+  {
+    "code": "1726260",
+    "name_uz": "Toshkent shahrining tumanlari",
+    "name_ru": "Районы города Ташкента",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726262",
+    "name_uz": "Uchtepa tumani",
+    "name_ru": "Учтепинский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726264",
+    "name_uz": "Bektemir tumani",
+    "name_ru": "Бектемирский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726266",
+    "name_uz": "Yunusobod tumani",
+    "name_ru": "Юнусабадский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726269",
+    "name_uz": "Mirzo Ulug'bek tumani",
+    "name_ru": "Мирзо-Улугбекский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726273",
+    "name_uz": "Mirobod tumani",
+    "name_ru": "Мирабадский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726277",
+    "name_uz": "Shayxontoxur tumani",
+    "name_ru": "Шайхантахурский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726280",
+    "name_uz": "Olmazor tumani",
+    "name_ru": "Алмазарский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726283",
+    "name_uz": "Sirg'ali tumani",
+    "name_ru": "Сергелийский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726287",
+    "name_uz": "Yakkasaroy tumani",
+    "name_ru": "Яккасарайский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726290",
+    "name_uz": "Yashnobod tumani",
+    "name_ru": "Яшнободский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726292",
+    "name_uz": "Yangihayot tumani",
+    "name_ru": "Янгихаётский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726294",
+    "name_uz": "Chilonzor tumani",
+    "name_ru": "Чиланзарский район",
+    "parent_code": "1726",
+    "level": 3
+  },
+  {
+    "code": "1726269550",
+    "name_uz": "Mirzo Ulug'bek tumani hokimiyatiga qarashli shaharlar",
+    "name_ru": "Городские поселки,подч. хок-ту М.Улугбекского р-на",
+    "parent_code": "1726269",
+    "level": 4
+  },
+  {
+    "code": "1726269558",
+    "name_uz": "Ulug'bek",
+    "name_ru": "Улугбек",
+    "parent_code": "1726269",
+    "level": 4
+  }
+]
