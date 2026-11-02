@@ -88,4 +88,14 @@ export class AppController {
   getLargeTaxpayer(@Query('tin') tin: string) {
     return this.appService.getLargeTaxpayer(tin);
   }
+
+  @Get('sud-captcha-token')
+  getSudCaptchaToken() {
+    return this.appService.getCourtCaptchaToken();
+  }
+
+  @Get('sud-captcha-stats')
+  getSudCaptchaStats() {
+    return this.appService.getCourtCaptchaStats();
+  }
 }

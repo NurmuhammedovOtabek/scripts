@@ -2,6 +2,7 @@ import { BirdarchaService } from './birdarcha/birdarcha.service';
 import { EjarimaService } from './ejarima/ejarima.service';
 import { MehnatService } from './mehnat/mehnat.service';
 import { Injectable } from '@nestjs/common';
+import { CourtCaptchaService } from './court-captcha/court-captcha.service';
 import { StatRegistryService } from './stat-registry/stat-registry.service';
 import { CourtCasesService } from './court-cases/court-cases.service';
 import { LicenseService } from './license/license.service';
@@ -16,6 +17,7 @@ import { LargeTaxpayerService } from './large-taxpayer/large-taxpayer.service';
 @Injectable()
 export class AppService {
   constructor(
+    private readonly courtCaptcha: CourtCaptchaService,
     private readonly statRegistry: StatRegistryService,
     private readonly courtCases: CourtCasesService,
     private readonly license: LicenseService,
@@ -58,23 +60,33 @@ export class AppService {
    * state worth alerting on before anyone notices missing data.
    */
   getHealth() {
-    const s = this.license.getStats();
-    const degraded = s.failStreak >= 3;
+    const ls = this.license.getStats();
+    const cs = this.courtCaptcha.getStats();
+    const degraded = ls.failStreak >= 3;
     return {
       status: degraded ? 'degraded' : 'ok',
-      reason: degraded ? `${s.failStreak} consecutive license failures` : null,
+      reason: degraded ? `${ls.failStreak} consecutive license failures` : null,
       uptimeSec: Math.round(process.uptime()),
-      startedAt: s.startedAt,
+      startedAt: ls.startedAt,
       license: {
-        total: s.total,
-        ok: s.ok,
-        failed: s.failed,
-        failStreak: s.failStreak,
-        avgMs: s.avgMs,
-        browserAlive: s.browserAlive,
-        queueBusy: s.queueBusy,
-        lastOkAt: s.lastOkAt,
-        lastError: s.lastError,
+        total: ls.total,
+        ok: ls.ok,
+        failed: ls.failed,
+        failStreak: ls.failStreak,
+        avgMs: ls.avgMs,
+        browserAlive: ls.browserAlive,
+        queueBusy: ls.queueBusy,
+        lastOkAt: ls.lastOkAt,
+        lastError: ls.lastError,
+      },
+      courtCaptcha: {
+        total: cs.total,
+        ok: cs.ok,
+        failed: cs.failed,
+        failStreak: cs.failStreak,
+        browserAlive: cs.browserAlive,
+        lastOkAt: cs.lastOkAt,
+        lastError: cs.lastError,
       },
     };
   }
@@ -154,5 +166,13 @@ export class AppService {
   /** A company's open vacancies from the national vacancy database, by tin. */
   getMehnatVacancies(tin: string) {
     return this.mehnat.getVacancies(tin);
+  }
+
+  getCourtCaptchaToken() {
+    return this.courtCaptcha.getToken();
+  }
+
+  getCourtCaptchaStats() {
+    return this.courtCaptcha.getStats();
   }
 }

@@ -18,6 +18,7 @@ import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
 import { BirdarchaModule } from './birdarcha/birdarcha.module';
 import { EjarimaModule } from './ejarima/ejarima.module';
 import { MehnatModule } from './mehnat/mehnat.module';
+import { CourtCaptchaModule } from './court-captcha/court-captcha.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { MehnatModule } from './mehnat/mehnat.module';
     BirdarchaModule,
     EjarimaModule,
     MehnatModule,
+    CourtCaptchaModule,
   ],
   controllers: [AppController, LogsController],
   providers: [AppService],
