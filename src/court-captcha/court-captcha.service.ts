@@ -190,7 +190,12 @@ export class CourtCaptchaService implements OnModuleInit, OnModuleDestroy {
 
     this.browser = await chromium.launch({
       headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--headless=new',
+      ],
+      executablePath: chromium.executablePath(),
     });
     this.logger.log('Chromium launched');
     return this.browser;
