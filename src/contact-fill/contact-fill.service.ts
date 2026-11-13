@@ -10,56 +10,73 @@ const TIMEOUT_MS = 20_000;
 const CALL_DELAY_MS = 5_000;
 const DAILY_LIMIT = 50;
 
+const KNOWN_BACKENDS: Record<string, string> = {
+  test: 'https://test.humora.uz/api',
+  prod: 'https://humora.uz/api',
+};
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 @Injectable()
 export class ContactFillService implements OnModuleInit {
   private readonly logger = new Logger(ContactFillService.name);
-  private readonly backendUrl: string;
   private readonly adminSecret: string;
   private running = false;
+  private runningFor = '';
   private dailyUsed = 0;
   private lastResetDate = '';
 
   constructor() {
-    this.backendUrl = (
-      process.env.BACKEND_URL || 'https://humora.uz/api'
-    ).replace(/\/+$/, '');
     this.adminSecret = process.env.ADMIN_SECRET || '';
   }
 
   onModuleInit() {
     if (process.env.CONTACT_FILL_AUTO === '1') {
       this.logger.log('[contact-fill] auto-start enabled, running in 10s');
-      setTimeout(() => this.run(), 10_000);
+      setTimeout(() => this.run('prod'), 10_000);
     }
   }
 
-  async run(): Promise<{
+  async run(target: string = 'prod'): Promise<{
     asked: number;
     filled: number;
     phones: number;
     emails: number;
     failed: number;
+    backend: string;
   }> {
+    const backendUrl = this.resolveBackend(target);
+    if (!backendUrl) {
+      this.logger.warn(`[contact-fill] unknown target: ${target}`);
+      return { asked: 0, filled: 0, phones: 0, emails: 0, failed: 0, backend: target };
+    }
+
     if (this.running) {
-      this.logger.log('[contact-fill] already running');
-      return { asked: 0, filled: 0, phones: 0, emails: 0, failed: 0 };
+      this.logger.log(`[contact-fill] already running for ${this.runningFor}`);
+      return { asked: 0, filled: 0, phones: 0, emails: 0, failed: 0, backend: backendUrl };
     }
 
     this.resetDailyIfNeeded();
     const budget = Math.max(DAILY_LIMIT - this.dailyUsed, 0);
     if (budget === 0) {
       this.logger.log('[contact-fill] daily limit reached');
-      return { asked: 0, filled: 0, phones: 0, emails: 0, failed: 0 };
+      return { asked: 0, filled: 0, phones: 0, emails: 0, failed: 0, backend: backendUrl };
     }
 
     this.running = true;
+    this.runningFor = target;
     try {
-      return await this.walk(budget);
+      return await this.walk(budget, backendUrl);
     } finally {
       this.running = false;
+      this.runningFor = '';
     }
+  }
+
+  private resolveBackend(target: string): string | null {
+    if (KNOWN_BACKENDS[target]) return KNOWN_BACKENDS[target];
+    if (target.startsWith('http')) return target.replace(/\/+$/, '');
+    return null;
   }
 
   status() {
@@ -72,8 +89,8 @@ export class ContactFillService implements OnModuleInit {
     };
   }
 
-  private async walk(budget: number) {
-    const inns = await this.fetchPending(budget);
+  private async walk(budget: number, backendUrl: string) {
+    const inns = await this.fetchPending(budget, backendUrl);
     this.logger.log(
       `[contact-fill] got ${inns.length} pending INNs, budget=${budget}`,
     );
@@ -115,20 +132,20 @@ export class ContactFillService implements OnModuleInit {
     }
 
     if (results.length > 0) {
-      await this.sendResults(results);
+      await this.sendResults(results, backendUrl);
     }
 
     this.logger.log(
       `[contact-fill] done — asked=${asked} filled=${filled} ` +
-        `phones=${phones} emails=${emails} failed=${failed}`,
+        `phones=${phones} emails=${emails} failed=${failed} backend=${backendUrl}`,
     );
-    return { asked, filled, phones, emails, failed };
+    return { asked, filled, phones, emails, failed, backend: backendUrl };
   }
 
-  private async fetchPending(limit: number): Promise<string[]> {
+  private async fetchPending(limit: number, backendUrl: string): Promise<string[]> {
     try {
       const res = await axios.get(
-        `${this.backendUrl}/contact-fill/pending?limit=${limit}`,
+        `${backendUrl}/contact-fill/pending?limit=${limit}`,
         {
           headers: { 'x-admin-secret': this.adminSecret },
           timeout: 15_000,
@@ -196,10 +213,11 @@ export class ContactFillService implements OnModuleInit {
       phone: string | null;
       email: string | null;
     }>,
+    backendUrl: string,
   ): Promise<void> {
     try {
       const res = await axios.post(
-        `${this.backendUrl}/contact-fill/results`,
+        `${backendUrl}/contact-fill/results`,
         { results },
         {
           headers: {

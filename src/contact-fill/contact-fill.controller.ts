@@ -1,4 +1,4 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Controller, Get, Post, Query } from '@nestjs/common';
 import { ContactFillService } from './contact-fill.service';
 
 @Controller('contact-fill')
@@ -6,8 +6,8 @@ export class ContactFillController {
   constructor(private readonly fill: ContactFillService) {}
 
   @Post('run')
-  run() {
-    return this.fill.run();
+  run(@Query('target') target?: string) {
+    return this.fill.run(target || 'prod');
   }
 
   @Get('status')
