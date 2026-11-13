@@ -17,6 +17,7 @@ import { MibModule } from './mib/mib.module';
 import { LargeTaxpayerModule } from './large-taxpayer/large-taxpayer.module';
 import { BirdarchaModule } from './birdarcha/birdarcha.module';
 import { EjarimaModule } from './ejarima/ejarima.module';
+import { ContactFillModule } from './contact-fill/contact-fill.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { EjarimaModule } from './ejarima/ejarima.module';
     LargeTaxpayerModule,
     BirdarchaModule,
     EjarimaModule,
+    ContactFillModule,
   ],
   controllers: [AppController, LogsController],
   providers: [AppService],
