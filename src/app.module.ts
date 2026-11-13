@@ -19,6 +19,7 @@ import { BirdarchaModule } from './birdarcha/birdarcha.module';
 import { EjarimaModule } from './ejarima/ejarima.module';
 import { MehnatModule } from './mehnat/mehnat.module';
 import { CourtCaptchaModule } from './court-captcha/court-captcha.module';
+import { ContactFillModule } from './contact-fill/contact-fill.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { CourtCaptchaModule } from './court-captcha/court-captcha.module';
     EjarimaModule,
     MehnatModule,
     CourtCaptchaModule,
+    ContactFillModule,
   ],
   controllers: [AppController, LogsController],
   providers: [AppService],
